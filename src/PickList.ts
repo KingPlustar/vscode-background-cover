@@ -1043,9 +1043,9 @@ export class PickList {
             console.warn('[BackgroundCover] Failed to load image overrides:', e);
         }
 
-        // Recency-based anti-sticky weights: the picked image is fully excluded
-        // on the very next switch (weight 0), then recovers 50% of its base
-        // weight per switch (50% -> 100%). State is in-memory only.
+        // Anti-sticky weights (configurable): when enabled, the picked image is
+        // excluded for one full round (eligible count of switches), then
+        // recovers 1/n of its base weight per round, n = max(2, total/10).
         const folderKey = this.normalizePathKey(folder);
         if (PickList.weightStateFolder !== folderKey) {
             PickList.weightStateFolder = folderKey;
@@ -1053,21 +1053,30 @@ export class PickList {
             PickList.weightPickedAt.clear();
         }
         const currentCount = PickList.weightSwitchCount;
-        const current = PickList.lastAppliedPath && isPathInside(folder, PickList.lastAppliedPath)
+        const antiSticky = this.config.get<boolean>('antiSticky', true);
+        const current = antiSticky && PickList.lastAppliedPath && isPathInside(folder, PickList.lastAppliedPath)
             ? path.basename(PickList.lastAppliedPath)
             : undefined;
+        const eligibleCount = sorted.filter(f => (weights.get(f) ?? 10) > 0).length;
+        const total = eligibleCount > 0 ? eligibleCount : sorted.length;
+        const n = Math.max(2, Math.floor(total / 10));
         const chosen = pickWeightedFile(
             sorted,
             f => {
                 const base = weights.get(f) ?? 10;
                 if (base <= 0) { return 0; }
-                const since = currentCount - (PickList.weightPickedAt.get(f) ?? -1);
-                const factor = since <= 1 ? 0 : Math.min(1, (since - 1) / 2);
+                if (!antiSticky) { return base; }
+                const pickedAtSwitch = PickList.weightPickedAt.get(f);
+                const since = pickedAtSwitch === undefined
+                    ? Number.MAX_SAFE_INTEGER
+                    : currentCount - pickedAtSwitch;
+                const rounds = total > 0 ? Math.floor(since / total) : 0;
+                const factor = Math.min(1, rounds / n);
                 return base * factor;
             },
             current
         );
-        if (chosen) {
+        if (chosen && antiSticky) {
             PickList.weightPickedAt.set(chosen, currentCount);
         }
         return chosen;

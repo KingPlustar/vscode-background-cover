@@ -79,7 +79,7 @@ export default {
     imageConfigDelete:    '删除',
     imageConfigName:      '图片',
     weight:               '权重（随机模式）',
-    weightHint:           '10 为基准：高于 10 更常出现、低于 10 更少出现；同一张图不会连续出现；0 表示不参与轮换',
+    weightHint:           '10 为基准：高于 10 更常出现、低于 10 更少出现；0 表示不参与轮换',
     dwellBonus:           '停留时间加成（秒）',
     dwellBonusHint:       '仅计时器（秒）模式生效；正数延长、负数缩短',
     minDisplay:           '最小展示时间（秒）',
@@ -88,6 +88,8 @@ export default {
     imageConfigCancel:    '取消',
     configImageTitle:     '图片轮换配置',
     configDeleteConfirm:  '确定删除该图片的轮换配置吗？',
+    antiSticky:           '防重复',
+    antiStickyHint:       '开启后，最近展示的图片会临时降低权重，整轮内不会连续出现；关闭后为纯随机加权（可能连续重复）',
     applyChanges:         '重启窗口生效',
     applyChangesHint:     '本部分功能修改后需重启窗口才能生效，修改完成后请点击下方按钮'
 };

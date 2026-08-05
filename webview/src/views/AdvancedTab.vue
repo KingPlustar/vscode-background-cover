@@ -17,6 +17,15 @@
                 />
             </div>
 
+            <div v-if="config.playMode === 'random'" class="row">
+                <span class="row-label">{{ t('antiSticky') }}</span>
+                <el-switch
+                    :model-value="!!config.antiSticky"
+                    @change="(v: any) => bridge.post({ type: 'setConfig', key: 'antiSticky', value: v })"
+                />
+            </div>
+            <div v-if="config.playMode === 'random'" class="anti-sticky-hint">{{ t('antiStickyHint') }}</div>
+
             <div class="row">
                 <span class="row-label">{{ t('playOrder') }}</span>
                 <el-select
@@ -429,4 +438,11 @@ function removeConfig(item: { name: string }) {
 }
 
 .dialog-input { width: 100%; }
+
+.anti-sticky-hint {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    line-height: 1.4;
+    padding: 0 0 6px;
+}
 </style>

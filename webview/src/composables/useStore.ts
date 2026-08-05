@@ -14,6 +14,7 @@ export interface StudioConfig {
     autoIntervalUnit: string;
     playMode: string;
     triggerMode: string;
+    antiSticky: boolean;
     sizeModel: string;
     blendModel: string;
     randomImageFolder: string;
@@ -45,6 +46,7 @@ export const config = reactive<StudioConfig>({
     autoIntervalUnit: 'seconds',
     playMode: 'random',
     triggerMode: 'timer',
+    antiSticky: true,
     sizeModel: 'cover',
     blendModel: 'auto',
     randomImageFolder: ''

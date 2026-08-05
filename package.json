@@ -140,6 +140,11 @@
                     "default": "seconds",
                     "description": "Unit of autoInterval: seconds or days / 自动更换间隔单位：秒或天"
                 },
+                "backgroundCover.antiSticky": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "No repeats: temporarily reduce the weight of recently shown images / 防重复：最近展示的图片临时降权，避免连续重复"
+                },
                 "backgroundCover.sizeModel": {
                     "type": "string",
                     "enum": [

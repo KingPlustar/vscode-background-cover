@@ -171,6 +171,7 @@ export class StudioViewProvider implements WebviewViewProvider {
                     autoIntervalUnit: cfg.get('autoIntervalUnit') ?? 'seconds',
                     playMode: cfg.get('playMode') ?? 'random',
                     triggerMode: cfg.get('triggerMode') ?? 'timer',
+                    antiSticky: cfg.get('antiSticky') ?? true,
                     sizeModel: cfg.get('sizeModel') ?? 'cover',
                     blendModel: cfg.get('blendModel') ?? 'auto',
                     randomImageFolder: cfg.get('randomImageFolder') ?? ''
