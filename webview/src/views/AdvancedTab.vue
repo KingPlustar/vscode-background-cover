@@ -131,7 +131,7 @@
             <el-form label-position="top" size="small">
                 <div class="dialog-file">{{ editingName }}</div>
                 <el-form-item :label="t('weight')">
-                    <el-input-number v-model="form.weight" :min="0" :max="100" :step="1" controls-position="right" class="dialog-input" />
+                    <el-input-number v-model="form.weight" :min="0" :max="10000" :step="1" controls-position="right" class="dialog-input" />
                     <div class="field-hint">{{ t('weightHint') }}</div>
                 </el-form-item>
                 <el-form-item :label="t('dwellBonus')">
@@ -235,7 +235,7 @@ function onSupport()      { bridge.post({ type: 'runAction', action: ActionType.
 // --- Per-image rotation settings ---
 const dialogVisible = ref(false);
 const editingName = ref('');
-const form = reactive({ weight: 1, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
+const form = reactive({ weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
 
 function addConfig() {
     bridge.post({ type: 'pickImageForConfig' });
@@ -246,7 +246,7 @@ bridge.on('imageConfigPick', (data: any) => {
     if (!name) { return; }
     const existing = state.imageConfigs.find(i => i.name === name);
     editingName.value = name;
-    form.weight = existing?.weight ?? 1;
+    form.weight = existing?.weight ?? 10;
     form.dwellBonusSeconds = existing?.dwellBonusSeconds ?? 0;
     form.minDisplaySeconds = existing?.minDisplaySeconds ?? 0;
     dialogVisible.value = true;

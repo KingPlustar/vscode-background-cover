@@ -130,9 +130,14 @@ suite("ImageOverridesStore", function () {
     test("sanitizes invalid values", async function () {
         await store.save({ file: 'x.png', weight: 999, dwellBonusSeconds: -100000, minDisplaySeconds: -5 });
         const [o] = await store.load();
-        assert.strictEqual(o.weight, 100);
+        assert.strictEqual(o.weight, 999);
         assert.strictEqual(o.dwellBonusSeconds, -86400);
         assert.strictEqual(o.minDisplaySeconds, 0);
+        // loose safety cap
+        await store.save({ file: 'y.png', weight: 99999, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
+        const [x, y] = await store.load();
+        assert.strictEqual(x.weight, 999);
+        assert.strictEqual(y.weight, 10000);
     });
 
     test("ignores malformed entries in an existing file", async function () {
@@ -140,6 +145,6 @@ suite("ImageOverridesStore", function () {
         const all = await store.load();
         assert.strictEqual(all.length, 1);
         assert.strictEqual(all[0].file, 'ok.png');
-        assert.strictEqual(all[0].weight, 1);
+        assert.strictEqual(all[0].weight, 10);
     });
 });

@@ -19,7 +19,7 @@ export interface ImageOverride {
 }
 
 export const IMAGE_OVERRIDE_FILE = '.background-cover.json';
-export const DEFAULT_WEIGHT = 1;
+export const DEFAULT_WEIGHT = 10;
 
 interface PersistedFile {
     version?: number;
@@ -36,7 +36,7 @@ function toOverride(raw: unknown): ImageOverride | null {
     const o = raw as Record<string, unknown>;
     if (typeof o.file !== 'string' || !o.file.trim()) { return null; }
     const file = path.basename(o.file);
-    const weight = Math.round(sanitizeNumber(o.weight, DEFAULT_WEIGHT, 0, 100));
+    const weight = Math.round(sanitizeNumber(o.weight, DEFAULT_WEIGHT, 0, 10000));
     const dwellBonusSeconds = sanitizeNumber(o.dwellBonusSeconds, 0, -86400, 86400);
     const minDisplaySeconds = sanitizeNumber(o.minDisplaySeconds, 0, 0, 86400);
     return { file, weight, dwellBonusSeconds, minDisplaySeconds };
@@ -65,7 +65,7 @@ export class ImageOverridesStore {
     public save(override: ImageOverride): Promise<ImageOverride> {
         const entry: ImageOverride = {
             file: path.basename(override.file),
-            weight: Math.round(sanitizeNumber(override.weight, DEFAULT_WEIGHT, 0, 100)),
+            weight: Math.round(sanitizeNumber(override.weight, DEFAULT_WEIGHT, 0, 10000)),
             dwellBonusSeconds: sanitizeNumber(override.dwellBonusSeconds, 0, -86400, 86400),
             minDisplaySeconds: sanitizeNumber(override.minDisplaySeconds, 0, 0, 86400)
         };

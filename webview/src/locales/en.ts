@@ -79,7 +79,7 @@ export default {
     imageConfigDelete:    'Delete',
     imageConfigName:      'Image',
     weight:               'Weight (random mode)',
-    weightHint:           'Higher weight means a higher chance of being picked; the same image never appears twice in a row; 0 excludes the image',
+    weightHint:           '10 is the baseline: above 10 appears more often, below 10 less often; the same image never appears twice in a row; 0 excludes the image',
     dwellBonus:           'Dwell Bonus (s)',
     dwellBonusHint:       'Timer (seconds) mode only; positive extends, negative shortens',
     minDisplay:           'Min Display Time (s)',

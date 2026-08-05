@@ -79,7 +79,7 @@ export default {
     imageConfigDelete:    '删除',
     imageConfigName:      '图片',
     weight:               '权重（随机模式）',
-    weightHint:           '权重越高，被随机抽中的概率越大；同一张图不会连续出现；0 表示不参与轮换',
+    weightHint:           '10 为基准：高于 10 更常出现、低于 10 更少出现；同一张图不会连续出现；0 表示不参与轮换',
     dwellBonus:           '停留时间加成（秒）',
     dwellBonusHint:       '仅计时器（秒）模式生效；正数延长、负数缩短',
     minDisplay:           '最小展示时间（秒）',

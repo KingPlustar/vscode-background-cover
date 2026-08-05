@@ -1059,7 +1059,7 @@ export class PickList {
         const chosen = pickWeightedFile(
             sorted,
             f => {
-                const base = weights.get(f) ?? 1;
+                const base = weights.get(f) ?? 10;
                 if (base <= 0) { return 0; }
                 const since = currentCount - (PickList.weightPickedAt.get(f) ?? -1);
                 const factor = since <= 1 ? 0 : Math.min(1, (since - 1) / 2);
