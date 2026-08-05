@@ -436,7 +436,7 @@ export class OnlineImageHelper {
 
     private static getUserAgent(): string {
         if (!this.cachedUserAgent) {
-            const extension = extensions.getExtension('manasxx.background-cover');
+            const extension = extensions.getExtension('KingPlustar.background-cover');
             const version = extension?.packageJSON?.version;
             const suffix = version ? `/${version}` : '';
             this.cachedUserAgent = `VSCode-Background-Cover${suffix}`;

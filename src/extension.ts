@@ -50,7 +50,7 @@ export function activate(context: ExtensionContext) {
 		if (!isChanged) {
 			const config = workspace.getConfiguration('backgroundCover');
 			if (config.imagePath && !fs.existsSync(CUSTOM_CSS_FILE_PATH)) {
-				const ex: Extension<any> | undefined = extensions.getExtension('manasxx.background-cover');
+				const ex: Extension<any> | undefined = extensions.getExtension('KingPlustar.background-cover');
 				const extensionVersion: string = ex ? ex.packageJSON['version'] : '';
 				window.showInformationMessage(
 					`BackgroundCover ${extensionVersion || ''}：检测到核心文件尚未初始化，需要重新应用背景补丁。是否立即执行？ / BackgroundCover ${extensionVersion || ''}: Core files are not initialized. Apply the background patch now?`,
@@ -172,7 +172,7 @@ export function activate(context: ExtensionContext) {
 
 	 // 首次打开-提示语
 	let openVersion:string|undefined           = context.globalState.get('ext_version');
-	let ex:Extension<any>|undefined = extensions.getExtension('manasxx.background-cover');
+	let ex:Extension<any>|undefined = extensions.getExtension('KingPlustar.background-cover');
 	let version:string           = ex ? ex.packageJSON['version'] : '';
 	
 	if(openVersion != version){

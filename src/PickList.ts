@@ -449,7 +449,7 @@ export class PickList {
         if (path == undefined) {
             return window.showWarningMessage('无效菜单');
         }
-        const extensionUri = getContext().extensionUri ?? extensions.getExtension("manasxx.background-cover")?.extensionUri;
+        const extensionUri = getContext().extensionUri ?? extensions.getExtension("KingPlustar.background-cover")?.extensionUri;
         if (!extensionUri) {
             return window.showWarningMessage('未找到扩展资源路径 / Extension resource path not found');
         }

@@ -3,7 +3,7 @@
     "displayName": "background-cover",
     "description": "Add a picture you like to cover the entire vscode background (Hot Reload Supported). / 添加你喜欢的图片覆盖整个vscode背景（支持热更新）",
     "version": "3.5.3",
-    "publisher": "manasxx",
+    "publisher": "KingPlustar",
     "engines": {
         "vscode": "^1.38.0"
     },
