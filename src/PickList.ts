@@ -186,6 +186,9 @@ export class PickList {
     private static _updateSeq: number = 0;
     private static nextChangeAt: number = 0;
     private static lastAppliedPath = '';
+    private static weightStateFolder = '';
+    private static weightSwitchCount = 0;
+    private static weightPickedAt = new Map<string, number>();
     private static readonly MAX_TIMER_CHUNK_MS = 24 * 60 * 60 * 1000;
 
     private readonly quickPick: QuickPick<ImgItem> | any;
@@ -1040,10 +1043,34 @@ export class PickList {
             console.warn('[BackgroundCover] Failed to load image overrides:', e);
         }
 
+        // Recency-based anti-sticky weights: the picked image is fully excluded
+        // on the very next switch (weight 0), then recovers 50% of its base
+        // weight per switch (50% -> 100%). State is in-memory only.
+        const folderKey = this.normalizePathKey(folder);
+        if (PickList.weightStateFolder !== folderKey) {
+            PickList.weightStateFolder = folderKey;
+            PickList.weightSwitchCount = 0;
+            PickList.weightPickedAt.clear();
+        }
+        const currentCount = PickList.weightSwitchCount;
         const current = PickList.lastAppliedPath && isPathInside(folder, PickList.lastAppliedPath)
             ? path.basename(PickList.lastAppliedPath)
             : undefined;
-        return pickWeightedFile(sorted, f => weights.get(f) ?? 1, current);
+        const chosen = pickWeightedFile(
+            sorted,
+            f => {
+                const base = weights.get(f) ?? 1;
+                if (base <= 0) { return 0; }
+                const since = currentCount - (PickList.weightPickedAt.get(f) ?? -1);
+                const factor = since <= 1 ? 0 : Math.min(1, (since - 1) / 2);
+                return base * factor;
+            },
+            current
+        );
+        if (chosen) {
+            PickList.weightPickedAt.set(chosen, currentCount);
+        }
+        return chosen;
     }
 
     /** Sequence/random source picker for online folders (no per-image weights). */
@@ -1412,6 +1439,7 @@ export class PickList {
         }
         const shouldDisableAuto = persist && clearOnlineCache && this.isSingleImagePath(path);
         PickList.lastAppliedPath = path;
+        PickList.weightSwitchCount += 1;
         await this.setConfigValue('imagePath', path, true, persist);
         if (shouldDisableAuto) {
             await this.disableAutoRandomForSingleImage();
