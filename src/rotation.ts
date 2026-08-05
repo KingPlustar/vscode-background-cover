@@ -30,6 +30,31 @@ export function pickWeightedIndex(weights: number[]): number {
     return weights.length - 1;
 }
 
+/**
+ * Weighted pick with replacement among `files`, excluding `exclude` when at
+ * least one other candidate remains. Files with weight <= 0 are skipped;
+ * when no file has a positive weight, all files get equal weight 1.
+ * Returns undefined only when there are no candidates.
+ */
+export function pickWeightedFile(
+    files: string[],
+    weightOf: (file: string) => number,
+    exclude?: string
+): string | undefined {
+    const weighted = files.filter(f => weightOf(f) > 0);
+    const candidates = weighted.length > 0 ? weighted : files.slice();
+    if (candidates.length === 0) { return undefined; }
+    let pool = candidates;
+    if (exclude && candidates.length > 1) {
+        const next = candidates.filter(f => f !== exclude);
+        if (next.length > 0) { pool = next; }
+    }
+    const weights = pool.map(f => (weighted.length > 0 ? weightOf(f) : 1));
+    const idx = pickWeightedIndex(weights);
+    if (idx < 0) { return undefined; }
+    return pool[idx];
+}
+
 /** Advance a zero-based sequence index with wraparound. Returns -1 for empty lists. */
 export function nextSequenceIndex(previous: number | undefined, length: number): number {
     if (length <= 0) { return -1; }

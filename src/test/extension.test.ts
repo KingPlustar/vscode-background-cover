@@ -8,7 +8,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { naturalCompare, nextSequenceIndex, computeDwellSeconds, pickWeightedIndex, isPathInside } from '../rotation';
+import { naturalCompare, nextSequenceIndex, computeDwellSeconds, pickWeightedIndex, pickWeightedFile, isPathInside } from '../rotation';
 import { ImageOverridesStore } from '../imageOverrides';
 
 suite("Rotation Helpers", function () {
@@ -57,6 +57,47 @@ suite("Rotation Helpers", function () {
         assert.strictEqual(isPathInside('C:\\Images', 'C:\\Images\\a.jpg'), true);
         assert.strictEqual(isPathInside('C:\\Images', 'C:\\Images2\\a.jpg'), false);
         assert.strictEqual(isPathInside('C:\\Images', 'C:\\images\\a.jpg'), process.platform === 'win32');
+    });
+
+    test("pickWeightedFile picks proportionally to weights", function () {
+        const original = Math.random;
+        try {
+            Math.random = () => 0.0;
+            assert.strictEqual(pickWeightedFile(['a', 'b'], f => f === 'a' ? 1 : 1000), 'a');
+            Math.random = () => 0.999;
+            assert.strictEqual(pickWeightedFile(['a', 'b'], () => 1), 'b');
+        } finally {
+            Math.random = original;
+        }
+    });
+
+    test("pickWeightedFile excludes current when possible", function () {
+        const original = Math.random;
+        try {
+            Math.random = () => 0.0;
+            // 'a' would win by weight but is excluded -> 'b'
+            assert.strictEqual(pickWeightedFile(['a', 'b', 'c'], f => f === 'a' ? 100 : 1, 'a'), 'b');
+            // only one candidate -> the excluded one is allowed
+            assert.strictEqual(pickWeightedFile(['a'], () => 1, 'a'), 'a');
+            // exclude that is not among the candidates is ignored
+            assert.strictEqual(pickWeightedFile(['a', 'b'], () => 1, 'zzz'), 'a');
+        } finally {
+            Math.random = original;
+        }
+    });
+
+    test("pickWeightedFile falls back to equal weights when all weights are 0", function () {
+        const original = Math.random;
+        try {
+            Math.random = () => 0.0;
+            assert.strictEqual(pickWeightedFile(['a', 'b'], () => 0), 'a');
+        } finally {
+            Math.random = original;
+        }
+    });
+
+    test("pickWeightedFile returns undefined for empty input", function () {
+        assert.strictEqual(pickWeightedFile([], () => 1), undefined);
     });
 });
 

@@ -31,7 +31,7 @@ import {
     isPathInside,
     naturalCompare,
     nextSequenceIndex,
-    pickWeightedIndex
+    pickWeightedFile
 } from './rotation';
 
 
@@ -185,8 +185,7 @@ export class PickList {
     private static _reloadTriggerSeq: number = 0;
     private static _updateSeq: number = 0;
     private static nextChangeAt: number = 0;
-    private static weightedPool: string[] = [];
-    private static weightedPoolFolder = '';
+    private static lastAppliedPath = '';
     private static readonly MAX_TIMER_CHUNK_MS = 24 * 60 * 60 * 1000;
 
     private readonly quickPick: QuickPick<ImgItem> | any;
@@ -1021,7 +1020,8 @@ export class PickList {
     /**
      * Choose the next file from the rotation folder:
      * - sequence: natural filename order, progress persisted per folder;
-     * - random: weighted sampling without replacement (one full round).
+     * - random: independent weighted pick, excluding the currently shown
+     *   image so the same image never appears twice in a row.
      */
     private async pickFolderFile(folder: string, files: string[]): Promise<string | undefined> {
         const sorted = files.slice().sort(naturalCompare);
@@ -1040,28 +1040,10 @@ export class PickList {
             console.warn('[BackgroundCover] Failed to load image overrides:', e);
         }
 
-        const eligible = sorted.filter(f => (weights.get(f) ?? 1) > 0);
-        const useDefaults = eligible.length === 0;
-        const folderKey = this.normalizePathKey(folder);
-        let pool = PickList.weightedPool;
-        if (PickList.weightedPoolFolder !== folderKey || pool.length === 0) {
-            pool = (eligible.length > 0 ? eligible : sorted).slice();
-        } else {
-            const existing = new Set(sorted);
-            pool = pool.filter(f => existing.has(f));
-            if (pool.length === 0) {
-                pool = (eligible.length > 0 ? eligible : sorted).slice();
-            }
-        }
-        PickList.weightedPool = pool;
-        PickList.weightedPoolFolder = folderKey;
-
-        const weightList = pool.map(f => useDefaults ? 1 : (weights.get(f) ?? 1));
-        const idx = pickWeightedIndex(weightList);
-        if (idx < 0) { return undefined; }
-        const chosen = pool[idx];
-        pool.splice(idx, 1);
-        return chosen;
+        const current = PickList.lastAppliedPath && isPathInside(folder, PickList.lastAppliedPath)
+            ? path.basename(PickList.lastAppliedPath)
+            : undefined;
+        return pickWeightedFile(sorted, f => weights.get(f) ?? 1, current);
     }
 
     /** Sequence/random source picker for online folders (no per-image weights). */
@@ -1429,6 +1411,7 @@ export class PickList {
             this.clearOnlineFolder(true);
         }
         const shouldDisableAuto = persist && clearOnlineCache && this.isSingleImagePath(path);
+        PickList.lastAppliedPath = path;
         await this.setConfigValue('imagePath', path, true, persist);
         if (shouldDisableAuto) {
             await this.disableAutoRandomForSingleImage();
