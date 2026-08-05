@@ -113,6 +113,33 @@
                     "default": 10,
                     "description": "Automatically change background interval in seconds / 自动更换背景的时间间隔（秒）"
                 },
+                "backgroundCover.playMode": {
+                    "type": "string",
+                    "enum": [
+                        "random",
+                        "sequence"
+                    ],
+                    "default": "random",
+                    "description": "Rotation order: random (weighted, no repeat within a round) or sequence / 播放顺序：随机（加权、一轮内不重复）或顺序"
+                },
+                "backgroundCover.triggerMode": {
+                    "type": "string",
+                    "enum": [
+                        "timer",
+                        "startup"
+                    ],
+                    "default": "timer",
+                    "description": "When to rotate: timer or on every VS Code startup / 更换时机：计时器或每次启动 VS Code 时"
+                },
+                "backgroundCover.autoIntervalUnit": {
+                    "type": "string",
+                    "enum": [
+                        "seconds",
+                        "days"
+                    ],
+                    "default": "seconds",
+                    "description": "Unit of autoInterval: seconds or days / 自动更换间隔单位：秒或天"
+                },
                 "backgroundCover.sizeModel": {
                     "type": "string",
                     "enum": [

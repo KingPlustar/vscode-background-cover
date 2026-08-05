@@ -11,6 +11,9 @@ export interface StudioConfig {
     imagePathDisplay: string;     // webview URI for <img src>
     autoStatus: boolean;
     autoInterval: number;
+    autoIntervalUnit: string;
+    playMode: string;
+    triggerMode: string;
     sizeModel: string;
     blendModel: string;
     randomImageFolder: string;
@@ -29,6 +32,7 @@ export interface StudioState {
     folderImagesTotal: number;
     pets: Array<{ value: string; label: string; desc: string; thumb: string }>;
     colorPalette: Array<{ name: string; rgb: string; hex: string }>;
+    imageConfigs: Array<{ name: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }>;
 }
 
 export const config = reactive<StudioConfig>({
@@ -38,6 +42,9 @@ export const config = reactive<StudioConfig>({
     imagePathDisplay: '',
     autoStatus: false,
     autoInterval: 10,
+    autoIntervalUnit: 'seconds',
+    playMode: 'random',
+    triggerMode: 'timer',
     sizeModel: 'cover',
     blendModel: 'auto',
     randomImageFolder: ''
@@ -55,7 +62,8 @@ export const state = reactive<StudioState>({
     folderImages: [],
     folderImagesTotal: 0,
     pets: [],
-    colorPalette: []
+    colorPalette: [],
+    imageConfigs: []
 });
 
 export interface StudioBrand {

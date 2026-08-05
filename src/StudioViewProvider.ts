@@ -17,6 +17,8 @@ import {
 import { PickList, getAllPets } from './PickList';
 import { onDidChangeGlobalState } from './global';
 import { getColorEntries } from './color';
+import { ImageOverridesStore } from './imageOverrides';
+import { isPathInside } from './rotation';
 
 /**
  * Vue-powered single-pane configuration webview.
@@ -82,6 +84,10 @@ export class StudioViewProvider implements WebviewViewProvider {
 
     /** Re-send full state; used by external commands (refresh/home/support). */
     public pushState(): void {
+        void this.sendState();
+    }
+
+    private async sendState(): Promise<void> {
         if (!this.view) { return; }
         const cfg = workspace.getConfiguration('backgroundCover');
         const gs = this.ctx.globalState;
@@ -133,6 +139,21 @@ export class StudioViewProvider implements WebviewViewProvider {
         const pkg = (this.ctx.extension && (this.ctx.extension as any).packageJSON) || {};
         const brandName: string = pkg.displayName || pkg.name || 'background-cover';
 
+        let imageConfigs: { name: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }[] = [];
+        if (folder && fs.existsSync(folder) && fs.statSync(folder).isDirectory()) {
+            try {
+                const overrides = await new ImageOverridesStore(folder).load();
+                imageConfigs = overrides.map(o => ({
+                    name: o.file,
+                    weight: o.weight,
+                    dwellBonusSeconds: o.dwellBonusSeconds,
+                    minDisplaySeconds: o.minDisplaySeconds
+                }));
+            } catch {
+                imageConfigs = [];
+            }
+        }
+
         this.view.webview.postMessage({
             type: 'state',
             data: {
@@ -147,6 +168,9 @@ export class StudioViewProvider implements WebviewViewProvider {
                     imagePathDisplay,
                     autoStatus: cfg.get('autoStatus') ?? false,
                     autoInterval: cfg.get('autoInterval') ?? 10,
+                    autoIntervalUnit: cfg.get('autoIntervalUnit') ?? 'seconds',
+                    playMode: cfg.get('playMode') ?? 'random',
+                    triggerMode: cfg.get('triggerMode') ?? 'timer',
                     sizeModel: cfg.get('sizeModel') ?? 'cover',
                     blendModel: cfg.get('blendModel') ?? 'auto',
                     randomImageFolder: cfg.get('randomImageFolder') ?? ''
@@ -163,7 +187,8 @@ export class StudioViewProvider implements WebviewViewProvider {
                     folderImages,
                     folderImagesTotal,
                     pets,
-                    colorPalette
+                    colorPalette,
+                    imageConfigs
                 }
             }
         });
@@ -206,6 +231,18 @@ export class StudioViewProvider implements WebviewViewProvider {
                 }
                 return;
 
+            case 'pickImageForConfig':
+                await this.pickImageForConfig();
+                return;
+
+            case 'saveImageConfig':
+                await this.saveImageConfig(msg);
+                return;
+
+            case 'removeImageConfig':
+                await this.removeImageConfig(msg);
+                return;
+
             case 'applyDecorations':
                 await this.applyDecorations(msg.state || {});
                 return;
@@ -237,6 +274,68 @@ export class StudioViewProvider implements WebviewViewProvider {
                 }
                 return;
         }
+    }
+
+    /** Native file picker for adding a per-image rotation config entry. */
+    private async pickImageForConfig(): Promise<void> {
+        const cfg = workspace.getConfiguration('backgroundCover');
+        const folder = cfg.get<string>('randomImageFolder') || '';
+        if (!folder || !fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
+            window.showWarningMessage('Please set the source folder first / 请先设置来源目录');
+            return;
+        }
+        const uris = await window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            defaultUri: Uri.file(folder),
+            filters: { 'Images / Videos': ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'jfif', 'mp4', 'webm', 'ogg', 'mov'] },
+            title: 'Select an image to configure / 选择要配置的图片'
+        });
+        if (!uris || uris.length === 0) { return; }
+        const selected = uris[0].fsPath;
+        if (!isPathInside(folder, selected)) {
+            window.showWarningMessage('The selected file must be inside the source folder / 所选文件必须在来源目录内');
+            return;
+        }
+        this.view?.webview.postMessage({ type: 'imageConfigPick', name: path.basename(selected) });
+    }
+
+    /** Persist one image's weight / dwell bonus / min display time. */
+    private async saveImageConfig(msg: any): Promise<void> {
+        const cfg = workspace.getConfiguration('backgroundCover');
+        const folder = cfg.get<string>('randomImageFolder') || '';
+        if (!folder) { return; }
+        const name = typeof msg.name === 'string' ? path.basename(msg.name) : '';
+        if (!name) { return; }
+        try {
+            await new ImageOverridesStore(folder).save({
+                file: name,
+                weight: sanitizeNumber(msg.weight, 1, 0, 100),
+                dwellBonusSeconds: sanitizeNumber(msg.dwellBonusSeconds, 0, -86400, 86400),
+                minDisplaySeconds: sanitizeNumber(msg.minDisplaySeconds, 0, 0, 86400)
+            });
+        } catch (e: any) {
+            window.showErrorMessage(`Failed to save image config / 保存图片配置失败: ${e?.message ?? e}`);
+            return;
+        }
+        this.pushState();
+    }
+
+    /** Remove one image's rotation config entry. */
+    private async removeImageConfig(msg: any): Promise<void> {
+        const cfg = workspace.getConfiguration('backgroundCover');
+        const folder = cfg.get<string>('randomImageFolder') || '';
+        if (!folder) { return; }
+        const name = typeof msg.name === 'string' ? path.basename(msg.name) : '';
+        if (!name) { return; }
+        try {
+            await new ImageOverridesStore(folder).remove(name);
+        } catch (e: any) {
+            window.showErrorMessage(`Failed to remove image config / 删除图片配置失败: ${e?.message ?? e}`);
+            return;
+        }
+        this.pushState();
     }
 
     private async applyDecorations(state: any): Promise<void> {
@@ -353,6 +452,12 @@ export class StudioViewProvider implements WebviewViewProvider {
             <p>${msg}</p>
         </body></html>`;
     }
+}
+
+/** Clamp an incoming number from the webview. */
+function sanitizeNumber(value: unknown, fallback: number, min: number, max: number): number {
+    const n = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+    return Math.min(max, Math.max(min, n));
 }
 
 function randomNonce(): string {

@@ -25,6 +25,14 @@ import { getContext, onDidChangeGlobalState } from './global';
 import { BlendHelper } from './BlendHelper';
 import Color, { getColorList } from './color'; // 导入颜色定义
 import { OnlineImageHelper } from './OnlineImageHelper';
+import { ImageOverridesStore } from './imageOverrides';
+import {
+    computeDwellSeconds,
+    isPathInside,
+    naturalCompare,
+    nextSequenceIndex,
+    pickWeightedIndex
+} from './rotation';
 
 
 
@@ -172,10 +180,14 @@ export function getAllPets(): PetEntry[] {
 
 export class PickList {
     public static itemList: PickList | undefined;
-    private static intervalHandle: NodeJS.Timeout | undefined;
+    private static timerHandle: NodeJS.Timeout | undefined;
     private static isAutoRunning: boolean = false;
     private static _reloadTriggerSeq: number = 0;
     private static _updateSeq: number = 0;
+    private static nextChangeAt: number = 0;
+    private static weightedPool: string[] = [];
+    private static weightedPoolFolder = '';
+    private static readonly MAX_TIMER_CHUNK_MS = 24 * 60 * 60 * 1000;
 
     private readonly quickPick: QuickPick<ImgItem> | any;
     private _disposables: Disposable[] = [];
@@ -244,17 +256,19 @@ export class PickList {
         );
     }
 
-    public static autoUpdateBackground() {
+    public static async autoUpdateBackground(): Promise<string | undefined> {
         const config = workspace.getConfiguration('backgroundCover');
         if (!config.randomImageFolder || !config.autoStatus) {
-            return false;
+            return undefined;
         }
         PickList.itemList = new PickList(config);
-        PickList.itemList.autoUpdateBackground();
-        return PickList.itemList = undefined;
+        const applied = await PickList.itemList.autoUpdateBackground();
+        PickList.itemList = undefined;
+        await PickList.scheduleNextAutoUpdate(applied);
+        return applied;
     }
 
-    public static randomUpdateBackground() {
+    public static async randomUpdateBackground(): Promise<boolean> {
         const config = workspace.getConfiguration('backgroundCover');
         if (!config.randomImageFolder) {
             window.showWarningMessage('Please add a directory! / 请添加目录！');
@@ -263,8 +277,10 @@ export class PickList {
         PickList.itemList = new PickList(config);
         PickList.itemList.setRandUpdate(true);
         PickList.itemList.setSkipOnlineCache(true);
-        PickList.itemList.autoUpdateBackground();
+        const applied = await PickList.itemList.autoUpdateBackground();
         PickList.itemList = undefined;
+        await PickList.scheduleNextAutoUpdate(applied);
+        return !!applied;
     }
 
     public static async applyCurrentBackground(): Promise<boolean> {
@@ -278,44 +294,105 @@ export class PickList {
         return result;
     }
 
-    public static startAutoRandomTask() {
+    public static async startAutoRandomTask() {
         const config = workspace.getConfiguration('backgroundCover');
         const autoStatus = config.get<boolean>('autoStatus');
+        const triggerMode = config.get<string>('triggerMode', 'timer');
         const interval = config.get<number>('autoInterval', 10);
+        const unit = config.get<string>('autoIntervalUnit', 'seconds');
 
         PickList.stopAutoRandomTask();
 
-        if (autoStatus && interval > 0) {
-            console.log(`[BackgroundCover] Starting auto update task. Interval: ${interval}s`);
-            PickList.intervalHandle = setInterval(async () => {
-                if (PickList.isAutoRunning) {
-                    console.log('[BackgroundCover] Previous auto update still running, skipping this round');
-                    return;
-                }
-                const cfg = workspace.getConfiguration('backgroundCover');
-                const context = getContext();
-                const hasOnlineFolder = context.globalState.get('backgroundCoverOnlineFolder');
-                const hasSingleSource = context.globalState.get('backgroundCoverSingleImageSource');
-                if (cfg.randomImageFolder || hasOnlineFolder || hasSingleSource) {
-                    PickList.isAutoRunning = true;
-                    try {
-                        const pl = new PickList(cfg);
-                        pl.setSkipOnlineCache(true);
-                        await pl.autoUpdateBackground(false);
-                    } catch (err) {
-                        console.error(err);
-                    } finally {
-                        PickList.isAutoRunning = false;
-                    }
-                }
-            }, interval * 1000);
+        if (autoStatus && triggerMode === 'timer' && interval > 0) {
+            const label = unit === 'days' ? 'day(s)' : 's';
+            console.log(`[BackgroundCover] Starting auto update task. Interval: ${interval}${label}`);
+            await PickList.scheduleNextAutoUpdate();
         }
     }
 
     public static stopAutoRandomTask() {
-        if (PickList.intervalHandle) {
-            clearInterval(PickList.intervalHandle);
-            PickList.intervalHandle = undefined;
+        if (PickList.timerHandle) {
+            clearTimeout(PickList.timerHandle);
+            PickList.timerHandle = undefined;
+        }
+        PickList.nextChangeAt = 0;
+    }
+
+    /**
+     * (Re)arm the auto-update timer. When `afterImagePath` is provided and the
+     * unit is seconds, the next change is scheduled after that image's
+     * customized dwell time; otherwise the configured base interval is used.
+     * Long intervals (days) are split into <= 24h chunks to stay well below
+     * setTimeout's ~24.8 day limit.
+     */
+    public static async scheduleNextAutoUpdate(afterImagePath?: string): Promise<void> {
+        const cfg = workspace.getConfiguration('backgroundCover');
+        const autoStatus = cfg.get<boolean>('autoStatus');
+        const triggerMode = cfg.get<string>('triggerMode', 'timer');
+        if (!autoStatus || triggerMode !== 'timer') { return; }
+        const interval = cfg.get<number>('autoInterval', 10);
+        if (!(interval > 0)) { return; }
+        const unit = cfg.get<string>('autoIntervalUnit', 'seconds');
+        const baseMs = unit === 'days' ? interval * 24 * 60 * 60 * 1000 : interval * 1000;
+
+        let dwellMs = baseMs;
+        const imagePath = afterImagePath || cfg.get<string>('imagePath') || '';
+        if (unit === 'seconds' && imagePath && !/^https?:\/\//i.test(imagePath)) {
+            const folder = cfg.get<string>('randomImageFolder') || '';
+            if (folder && isPathInside(folder, imagePath)) {
+                try {
+                    const override = await new ImageOverridesStore(folder).getByFile(imagePath);
+                    if (override) {
+                        dwellMs = computeDwellSeconds(interval, override.dwellBonusSeconds, override.minDisplaySeconds) * 1000;
+                    }
+                } catch (e) {
+                    console.warn('[BackgroundCover] Failed to read image overrides:', e);
+                }
+            }
+        }
+        PickList.armTimer(dwellMs);
+    }
+
+    private static armTimer(ms: number): void {
+        PickList.stopAutoRandomTask();
+        if (!(ms > 0)) { return; }
+        PickList.nextChangeAt = Date.now() + ms;
+        const chunk = Math.min(ms, PickList.MAX_TIMER_CHUNK_MS);
+        PickList.timerHandle = setTimeout(() => {
+            const remaining = PickList.nextChangeAt - Date.now();
+            if (remaining > 0) {
+                PickList.armTimer(remaining);
+                return;
+            }
+            void PickList.runAutoTick();
+        }, chunk);
+    }
+
+    private static async runAutoTick(): Promise<void> {
+        if (PickList.isAutoRunning) {
+            console.log('[BackgroundCover] Previous auto update still running, rescheduling this round');
+            await PickList.scheduleNextAutoUpdate(undefined);
+            return;
+        }
+        const cfg = workspace.getConfiguration('backgroundCover');
+        const autoStatus = cfg.get<boolean>('autoStatus');
+        const triggerMode = cfg.get<string>('triggerMode', 'timer');
+        if (!autoStatus || triggerMode !== 'timer') { return; }
+        const context = getContext();
+        const hasOnlineFolder = context.globalState.get('backgroundCoverOnlineFolder');
+        const hasSingleSource = context.globalState.get('backgroundCoverSingleImageSource');
+        if (!(cfg.randomImageFolder || hasOnlineFolder || hasSingleSource)) { return; }
+        PickList.isAutoRunning = true;
+        try {
+            const pl = new PickList(cfg);
+            pl.setSkipOnlineCache(true);
+            const applied = await pl.autoUpdateBackground(false);
+            await PickList.scheduleNextAutoUpdate(applied);
+        } catch (err) {
+            console.error(err);
+            await PickList.scheduleNextAutoUpdate(undefined);
+        } finally {
+            PickList.isAutoRunning = false;
         }
     }
 
@@ -638,7 +715,7 @@ export class PickList {
         }
     }
 
-    private async autoUpdateBackground(persist: boolean = true): Promise<boolean> {
+    private async autoUpdateBackground(persist: boolean = true): Promise<string | undefined> {
         const context = getContext();
         const onlineFolder = context.globalState.get<string>('backgroundCoverOnlineFolder');
         const cachedImages = context.globalState.get<string[]>('backgroundCoverOnlineImageList');
@@ -654,9 +731,9 @@ export class PickList {
                     context.globalState.update('backgroundCoverOnlineImageList', images);
                 }
                 if (images && images.length > 0) {
-                    const randomImage = images[Math.floor(Math.random() * images.length)];
-                    await this.updateBackgound(randomImage, false, persist, { skipLargeImagePrompt: true });
-                    return true;
+                    const chosen = this.pickFromList(images, this.normalizePathKey(onlineFolder));
+                    await this.updateBackgound(chosen, false, persist, { skipLargeImagePrompt: true });
+                    return chosen;
                 }
             } catch (error: any) {
                 console.error('从在线文件夹获取图片失败:', error);
@@ -670,19 +747,21 @@ export class PickList {
         const singleSource = context.globalState.get<string>('backgroundCoverSingleImageSource');
         if (singleSource && this.isOnlineUrl(singleSource)) {
             await this.updateBackgound(singleSource, false, persist, { skipLargeImagePrompt: true });
-            return true;
+            return singleSource;
         }
 
         const randomImageFolder = this.config.get<string>('randomImageFolder');
         if (randomImageFolder && this.checkFolder(randomImageFolder)) {
             const files = this.getFolderImgList(randomImageFolder);
             if (files.length > 0) {
-                const randomFile = files[Math.floor(Math.random() * files.length)];
-                const file = path.join(randomImageFolder, randomFile);
+                const chosen = await this.pickFolderFile(randomImageFolder, files);
+                if (!chosen) { return undefined; }
+                const file = path.join(randomImageFolder, chosen);
                 await this.updateBackgound(file, false, persist, { skipLargeImagePrompt: true });
+                return file;
             }
         }
-        return true;
+        return undefined;
     }
 
     private openCacheFolder() {
@@ -937,6 +1016,71 @@ export class PickList {
         if (!fsStatus) { return false; }
         const stat = fs.statSync(folderPath);
         return stat.isDirectory();
+    }
+
+    /**
+     * Choose the next file from the rotation folder:
+     * - sequence: natural filename order, progress persisted per folder;
+     * - random: weighted sampling without replacement (one full round).
+     */
+    private async pickFolderFile(folder: string, files: string[]): Promise<string | undefined> {
+        const sorted = files.slice().sort(naturalCompare);
+        const playMode = this.config.get<string>('playMode', 'random');
+        if (playMode === 'sequence') {
+            if (sorted.length === 0) { return undefined; }
+            const idx = this.getSequenceIndex(this.normalizePathKey(folder), sorted.length);
+            return sorted[idx];
+        }
+
+        let weights = new Map<string, number>();
+        try {
+            const overrides = await new ImageOverridesStore(folder).load();
+            weights = new Map(overrides.map(o => [o.file, o.weight]));
+        } catch (e) {
+            console.warn('[BackgroundCover] Failed to load image overrides:', e);
+        }
+
+        const eligible = sorted.filter(f => (weights.get(f) ?? 1) > 0);
+        const useDefaults = eligible.length === 0;
+        const folderKey = this.normalizePathKey(folder);
+        let pool = PickList.weightedPool;
+        if (PickList.weightedPoolFolder !== folderKey || pool.length === 0) {
+            pool = (eligible.length > 0 ? eligible : sorted).slice();
+        } else {
+            const existing = new Set(sorted);
+            pool = pool.filter(f => existing.has(f));
+            if (pool.length === 0) {
+                pool = (eligible.length > 0 ? eligible : sorted).slice();
+            }
+        }
+        PickList.weightedPool = pool;
+        PickList.weightedPoolFolder = folderKey;
+
+        const weightList = pool.map(f => useDefaults ? 1 : (weights.get(f) ?? 1));
+        const idx = pickWeightedIndex(weightList);
+        if (idx < 0) { return undefined; }
+        const chosen = pool[idx];
+        pool.splice(idx, 1);
+        return chosen;
+    }
+
+    /** Sequence/random source picker for online folders (no per-image weights). */
+    private pickFromList(images: string[], key: string): string {
+        if (this.config.get<string>('playMode', 'random') === 'sequence' && images.length > 1) {
+            const idx = this.getSequenceIndex(key, images.length);
+            return images[idx];
+        }
+        return images[Math.floor(Math.random() * images.length)];
+    }
+
+    /** Read, advance and persist the per-folder sequence position. */
+    private getSequenceIndex(key: string, length: number): number {
+        const context = getContext();
+        const stored = context.globalState.get<{ folder: string; index: number }>('backgroundCoverSequenceIndex');
+        const prev = stored && stored.folder === key ? stored.index : undefined;
+        const next = nextSequenceIndex(prev, length);
+        context.globalState.update('backgroundCoverSequenceIndex', { folder: key, index: next });
+        return next;
     }
 
     /**

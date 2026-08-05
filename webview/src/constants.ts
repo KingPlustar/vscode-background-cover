@@ -31,4 +31,8 @@ export const SIZE_MODES = [
 
 export const BLEND_MODES = ['auto', 'multiply', 'lighten'];
 
+export const PLAY_MODES = ['random', 'sequence'] as const;
+export const TRIGGER_MODES = ['timer', 'startup'] as const;
+export const INTERVAL_UNITS = ['seconds', 'days'] as const;
+
 export const ONLINE_GALLERY_URL = 'https://vs.20988.xyz/d/24-vscodebei-jing-tu-tu-ku';

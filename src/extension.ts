@@ -76,7 +76,11 @@ export function activate(context: ExtensionContext) {
 
 	// 监听配置变化
 	context.subscriptions.push(workspace.onDidChangeConfiguration(e => {
-		if (e.affectsConfiguration('backgroundCover.autoStatus') || e.affectsConfiguration('backgroundCover.autoInterval')) {
+		if (e.affectsConfiguration('backgroundCover.autoStatus')
+			|| e.affectsConfiguration('backgroundCover.autoInterval')
+			|| e.affectsConfiguration('backgroundCover.playMode')
+			|| e.affectsConfiguration('backgroundCover.triggerMode')
+			|| e.affectsConfiguration('backgroundCover.autoIntervalUnit')) {
 			PickList.startAutoRandomTask();
 		}
 	}));
