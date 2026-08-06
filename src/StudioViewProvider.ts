@@ -140,18 +140,28 @@ export class StudioViewProvider implements WebviewViewProvider {
         const brandName: string = pkg.displayName || pkg.name || 'background-cover';
 
         let imageConfigs: { name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }[] = [];
+        let patterns: { pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; matchCount: number }[] = [];
         if (folder && fs.existsSync(folder) && fs.statSync(folder).isDirectory()) {
             try {
-                const overrides = await new ImageOverridesStore(folder).load();
-                imageConfigs = overrides.map(o => ({
+                const data = await new ImageOverridesStore(folder).load();
+                imageConfigs = data.images.map(o => ({
                     name: o.file,
                     display: this.toWebviewUri(path.join(folder, o.file)),
                     weight: o.weight,
                     dwellBonusSeconds: o.dwellBonusSeconds,
                     minDisplaySeconds: o.minDisplaySeconds
                 }));
+                const names = PickList.listFolderImages(folder);
+                patterns = data.patterns.map(p => ({
+                    pattern: p.pattern,
+                    weight: p.weight,
+                    dwellBonusSeconds: p.dwellBonusSeconds,
+                    minDisplaySeconds: p.minDisplaySeconds,
+                    matchCount: countPatternMatches(p.pattern, names)
+                }));
             } catch {
                 imageConfigs = [];
+                patterns = [];
             }
         }
 
@@ -191,7 +201,8 @@ export class StudioViewProvider implements WebviewViewProvider {
                     folderImagesTotal,
                     pets,
                     colorPalette,
-                    imageConfigs
+                    imageConfigs,
+                    patterns
                 }
             }
         });
@@ -244,6 +255,18 @@ export class StudioViewProvider implements WebviewViewProvider {
 
             case 'removeImageConfig':
                 await this.removeImageConfig(msg);
+                return;
+
+            case 'previewPattern':
+                await this.previewPattern(msg);
+                return;
+
+            case 'savePattern':
+                await this.savePattern(msg);
+                return;
+
+            case 'removePattern':
+                await this.removePattern(msg);
                 return;
 
             case 'applyDecorations':
@@ -338,6 +361,62 @@ export class StudioViewProvider implements WebviewViewProvider {
             window.showErrorMessage(`Failed to remove image config / 删除图片配置失败: ${e?.message ?? e}`);
             return;
         }
+        this.pushState();
+    }
+
+    /** Preview which files a regex pattern matches in the rotation folder. */
+    private async previewPattern(msg: any): Promise<void> {
+        const cfg = workspace.getConfiguration('backgroundCover');
+        const folder = cfg.get<string>('randomImageFolder') || '';
+        const pattern = typeof msg.pattern === 'string' ? msg.pattern : '';
+        let count = 0;
+        let files: { name: string; display: string }[] = [];
+        if (folder) {
+            try {
+                const re = new RegExp(pattern);
+                const names = PickList.listFolderImages(folder).filter(n => re.test(n));
+                count = names.length;
+                files = names.slice(0, 20).map(name => ({
+                    name,
+                    display: this.toWebviewUri(path.join(folder, name))
+                }));
+            } catch {
+                count = 0;
+                files = [];
+            }
+        }
+        this.view?.webview.postMessage({ type: 'patternPreview', pattern, count, files });
+    }
+
+    /** Persist one regex batch rule. */
+    private async savePattern(msg: any): Promise<void> {
+        const cfg = workspace.getConfiguration('backgroundCover');
+        const folder = cfg.get<string>('randomImageFolder') || '';
+        if (!folder) { return; }
+        const pattern = typeof msg.pattern === 'string' ? msg.pattern.trim() : '';
+        if (!pattern) { return; }
+        try {
+            await new ImageOverridesStore(folder).savePattern({
+                pattern,
+                weight: sanitizeNumber(msg.weight, 10, 0, 10000),
+                dwellBonusSeconds: sanitizeNumber(msg.dwellBonusSeconds, 0, -86400, 86400),
+                minDisplaySeconds: sanitizeNumber(msg.minDisplaySeconds, 0, 0, 86400)
+            });
+        } catch (e: any) {
+            window.showErrorMessage(`Invalid regex pattern / ???????: ${e?.message ?? e}`);
+            return;
+        }
+        this.pushState();
+    }
+
+    /** Remove one regex batch rule. */
+    private async removePattern(msg: any): Promise<void> {
+        const cfg = workspace.getConfiguration('backgroundCover');
+        const folder = cfg.get<string>('randomImageFolder') || '';
+        if (!folder) { return; }
+        const pattern = typeof msg.pattern === 'string' ? msg.pattern : '';
+        if (!pattern) { return; }
+        await new ImageOverridesStore(folder).removePattern(pattern);
         this.pushState();
     }
 
@@ -461,6 +540,16 @@ export class StudioViewProvider implements WebviewViewProvider {
 function sanitizeNumber(value: unknown, fallback: number, min: number, max: number): number {
     const n = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
     return Math.min(max, Math.max(min, n));
+}
+
+/** Count files in the rotation folder matching a regex pattern. */
+function countPatternMatches(pattern: string, names: string[]): number {
+    try {
+        const re = new RegExp(pattern);
+        return names.filter(n => re.test(n)).length;
+    } catch {
+        return 0;
+    }
 }
 
 function randomNonce(): string {

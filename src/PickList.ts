@@ -25,7 +25,7 @@ import { getContext, onDidChangeGlobalState } from './global';
 import { BlendHelper } from './BlendHelper';
 import Color, { getColorList } from './color'; // 导入颜色定义
 import { OnlineImageHelper } from './OnlineImageHelper';
-import { ImageOverridesStore } from './imageOverrides';
+import { ImageOverridesStore, effectiveOverride, ImageOverride, ImagePattern } from './imageOverrides';
 import {
     computeDwellSeconds,
     isPathInside,
@@ -1035,10 +1035,12 @@ export class PickList {
             return sorted[idx];
         }
 
-        let weights = new Map<string, number>();
+        let images: ImageOverride[] = [];
+        let patterns: ImagePattern[] = [];
         try {
-            const overrides = await new ImageOverridesStore(folder).load();
-            weights = new Map(overrides.map(o => [o.file, o.weight]));
+            const data = await new ImageOverridesStore(folder).load();
+            images = data.images;
+            patterns = data.patterns;
         } catch (e) {
             console.warn('[BackgroundCover] Failed to load image overrides:', e);
         }
@@ -1064,7 +1066,8 @@ export class PickList {
         const chosen = pickWeightedFile(
             sorted,
             f => {
-                const base = weights.get(f) ?? 10;
+                const eff = effectiveOverride(images, patterns, f);
+                const base = eff ? eff.weight : 10;
                 if (base <= 0) { return 0; }
                 if (!antiSticky) { return base; }
                 const pickedAtSwitch = PickList.weightPickedAt.get(f);

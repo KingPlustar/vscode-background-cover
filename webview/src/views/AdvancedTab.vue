@@ -154,6 +154,93 @@
             </el-button>
         </el-card>
 
+        <!-- Regex batch rules -->
+        <el-card v-if="config.randomImageFolder" class="card" shadow="never">
+            <template #header>
+                <span class="card-title">
+                    <el-icon><Filter /></el-icon>
+                    {{ t('patternRules') }}
+                    <el-tag v-if="state.patterns.length" size="small" round>{{ state.patterns.length }}</el-tag>
+                </span>
+            </template>
+
+            <el-empty
+                v-if="state.patterns.length === 0"
+                :description="t('patternRulesEmpty')"
+                :image-size="56"
+            />
+            <div v-else class="image-config-list">
+                <div v-for="item in state.patterns" :key="item.pattern" class="image-config-item">
+                    <div class="image-config-info">
+                        <span class="image-config-name pattern-text" :title="item.pattern">{{ item.pattern }}</span>
+                        <span class="image-config-meta">
+                            {{ t('weight') }}: {{ item.weight }}
+                            ? {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s
+                            ? {{ t('minDisplay') }}: {{ item.minDisplaySeconds }}s
+                            ? {{ t('patternMatchCount').replace('{n}', String(item.matchCount)) }}
+                        </span>
+                    </div>
+                    <div class="image-config-actions">
+                        <el-button link type="primary" size="small" @click="openPatternEdit(item)">
+                            <el-icon><Edit /></el-icon>
+                            {{ t('patternEdit') }}
+                        </el-button>
+                        <el-button link type="danger" size="small" @click="removePattern(item)">
+                            <el-icon><Delete /></el-icon>
+                            {{ t('patternDelete') }}
+                        </el-button>
+                    </div>
+                </div>
+            </div>
+
+            <el-button class="block-btn add-config-btn" @click="openPatternAdd">
+                <el-icon><Plus /></el-icon>
+                {{ t('patternAdd') }}
+            </el-button>
+        </el-card>
+
+        <!-- Pattern dialog -->
+        <el-dialog
+            v-model="patternDialogVisible"
+            :title="t('patternTitle')"
+            width="88%"
+            append-to-body
+        >
+            <el-form label-position="top" size="small">
+                <el-form-item :label="t('patternField')">
+                    <el-input v-model="patternForm.pattern" placeholder="^miku-\d+\.jpg$" @input="onPatternInput" />
+                    <div class="field-hint">{{ t('patternHint') }}</div>
+                </el-form-item>
+                <div v-if="patternPreviewText" class="field-hint pattern-preview-text">{{ patternPreviewText }}</div>
+                <div v-if="patternPreviewFiles.length" class="pattern-preview-list">
+                    <div v-for="file in patternPreviewFiles" :key="file.name" class="pattern-preview-item" :title="file.name">
+                        <video v-if="isVideoPath(file.name)" :src="file.display" muted loop playsinline preload="metadata" />
+                        <img v-else-if="file.display" :src="file.display" :alt="file.name" />
+                        <div v-else class="dialog-preview-fallback">
+                            <el-icon><Picture /></el-icon>
+                        </div>
+                    </div>
+                </div>
+                <div v-if="patternPreviewMoreText" class="field-hint">{{ patternPreviewMoreText }}</div>
+                <el-form-item :label="t('weight')">
+                    <el-input-number v-model="patternForm.weight" :min="0" :max="10000" :step="1" controls-position="right" class="dialog-input" />
+                    <div class="field-hint">{{ t('weightHint') }}</div>
+                </el-form-item>
+                <el-form-item :label="t('dwellBonus')">
+                    <el-input-number v-model="patternForm.dwellBonusSeconds" :min="-86400" :max="86400" :step="1" controls-position="right" class="dialog-input" />
+                    <div class="field-hint">{{ t('dwellBonusHint') }}</div>
+                </el-form-item>
+                <el-form-item :label="t('minDisplay')">
+                    <el-input-number v-model="patternForm.minDisplaySeconds" :min="0" :max="86400" :step="1" controls-position="right" class="dialog-input" />
+                    <div class="field-hint">{{ t('minDisplayHint') }}</div>
+                </el-form-item>
+            </el-form>
+            <template #footer>
+                <el-button size="small" @click="patternDialogVisible = false">{{ t('patternCancel') }}</el-button>
+                <el-button size="small" type="primary" @click="savePattern">{{ t('patternSave') }}</el-button>
+            </template>
+        </el-dialog>
+
         <!-- Config dialog -->
         <el-dialog
             v-model="dialogVisible"
@@ -243,7 +330,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture } from '@element-plus/icons-vue';
+import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture, Filter } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 import { useI18n } from '../composables/useI18n';
 import { useBridge } from '../composables/useBridge';
@@ -330,6 +417,82 @@ function removeConfig(item: { name: string }) {
         type: 'warning'
     }).then(() => {
         bridge.post({ type: 'removeImageConfig', name: item.name });
+    }).catch(() => { /* cancelled */ });
+}
+
+// --- Regex batch rules ---
+const patternDialogVisible = ref(false);
+const patternForm = reactive({ pattern: '', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
+const patternPreviewText = ref('');
+const patternPreviewCount = ref(0);
+const patternPreviewFiles = ref<{ name: string; display: string }[]>([]);
+let patternPreviewTimer: number | undefined;
+
+function openPatternAdd() {
+    patternForm.pattern = '';
+    patternForm.weight = 10;
+    patternForm.dwellBonusSeconds = 0;
+    patternForm.minDisplaySeconds = 0;
+    patternPreviewText.value = '';
+    patternPreviewCount.value = 0;
+    patternPreviewFiles.value = [];
+    patternDialogVisible.value = true;
+}
+
+function openPatternEdit(item: { pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }) {
+    patternForm.pattern = item.pattern;
+    patternForm.weight = item.weight;
+    patternForm.dwellBonusSeconds = item.dwellBonusSeconds;
+    patternForm.minDisplaySeconds = item.minDisplaySeconds;
+    patternPreviewText.value = '';
+    patternPreviewCount.value = 0;
+    patternPreviewFiles.value = [];
+    patternDialogVisible.value = true;
+    requestPatternPreview();
+}
+
+function onPatternInput() { requestPatternPreview(); }
+
+function requestPatternPreview() {
+    if (patternPreviewTimer) { clearTimeout(patternPreviewTimer); }
+    patternPreviewTimer = window.setTimeout(() => {
+        bridge.post({ type: 'previewPattern', pattern: patternForm.pattern });
+    }, 400);
+}
+
+bridge.on('patternPreview', (data: any) => {
+    if (data?.pattern !== patternForm.pattern) { return; }
+    patternPreviewCount.value = typeof data.count === 'number' ? data.count : 0;
+    patternPreviewFiles.value = Array.isArray(data?.files) ? data.files : [];
+    patternPreviewText.value = patternPreviewCount.value > 0
+        ? t('patternMatchCount').replace('{n}', String(patternPreviewCount.value))
+        : t('patternNoMatch');
+});
+
+const patternPreviewMoreText = computed(() => {
+    const shown = patternPreviewFiles.value.length;
+    if (shown === 0 || shown >= patternPreviewCount.value) { return ''; }
+    return t('patternPreviewMore').replace('{n}', String(patternPreviewCount.value)).replace('{shown}', String(shown));
+});
+
+function savePattern() {
+    bridge.post({
+        type: 'savePattern',
+        pattern: patternForm.pattern,
+        weight: patternForm.weight,
+        dwellBonusSeconds: patternForm.dwellBonusSeconds,
+        minDisplaySeconds: patternForm.minDisplaySeconds
+    });
+    patternDialogVisible.value = false;
+}
+
+function removePattern(item: { pattern: string }) {
+    ElMessageBox.confirm(t('patternDeleteConfirm'), t('patternDelete'), {
+        confirmButtonText: t('patternDelete'),
+        cancelButtonText: t('patternCancel'),
+        type: 'warning'
+    }).then(() => {
+        bridge.post({ type: 'removePattern', pattern: item.pattern });
     }).catch(() => { /* cancelled */ });
 }
 </script>
@@ -531,6 +694,32 @@ function removeConfig(item: { name: string }) {
 }
 
 .dialog-input { width: 100%; }
+
+.pattern-text { font-family: 'Consolas', 'SFMono-Regular', Menlo, monospace; }
+
+.pattern-preview-text { color: var(--studio-accent); }
+
+.pattern-preview-list {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    margin-bottom: 6px;
+}
+
+.pattern-preview-item {
+    flex: 0 0 auto;
+    width: 90px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #000;
+    border: 1px solid rgba(120, 140, 200, 0.18);
+    img, video {
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        object-fit: cover;
+        display: block;
+    }
+}
 
 .anti-sticky-hint {
     font-size: 11px;

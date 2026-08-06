@@ -10,7 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { naturalCompare, nextSequenceIndex, computeDwellSeconds, pickWeightedIndex, pickWeightedFile, isPathInside } from '../rotation';
-import { ImageOverridesStore } from '../imageOverrides';
+import { ImageOverridesStore, effectiveOverride } from '../imageOverrides';
 
 suite("Rotation Helpers", function () {
 
@@ -116,34 +116,34 @@ suite("ImageOverridesStore", function () {
     });
 
     test("round-trips save / load / remove", async function () {
-        assert.deepStrictEqual(await store.load(), []);
+        assert.deepStrictEqual((await store.load()).images, []);
         await store.save({ file: 'a.png', weight: 3, dwellBonusSeconds: 5, minDisplaySeconds: 2 });
         await store.save({ file: 'b.png', weight: 0, dwellBonusSeconds: -2, minDisplaySeconds: 0 });
-        const all = await store.load();
+        const all = (await store.load()).images;
         assert.strictEqual(all.length, 2);
         assert.deepStrictEqual(all.find(o => o.file === 'a.png'), { file: 'a.png', weight: 3, dwellBonusSeconds: 5, minDisplaySeconds: 2 });
         const b = await store.getByFile(path.join(dir, 'b.png'));
         assert.strictEqual(b && b.weight, 0);
         await store.remove('a.png');
-        assert.deepStrictEqual((await store.load()).map(o => o.file), ['b.png']);
+        assert.deepStrictEqual((await store.load()).images.map(o => o.file), ['b.png']);
     });
 
     test("sanitizes invalid values", async function () {
         await store.save({ file: 'x.png', weight: 999, dwellBonusSeconds: -100000, minDisplaySeconds: -5 });
-        const [o] = await store.load();
+        const [o] = (await store.load()).images;
         assert.strictEqual(o.weight, 999);
         assert.strictEqual(o.dwellBonusSeconds, -86400);
         assert.strictEqual(o.minDisplaySeconds, 0);
         // loose safety cap
         await store.save({ file: 'y.png', weight: 99999, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
-        const [x, y] = await store.load();
+        const [x, y] = (await store.load()).images;
         assert.strictEqual(x.weight, 999);
         assert.strictEqual(y.weight, 10000);
     });
 
     test("ignores malformed entries in an existing file", async function () {
         fs.writeFileSync(path.join(dir, '.background-cover.json'), '{ "version": 1, "images": [ 42, { "file": "ok.png" }, { "weight": 2 } ] }', 'utf8');
-        const all = await store.load();
+        const all = (await store.load()).images;
         assert.strictEqual(all.length, 1);
         assert.strictEqual(all[0].file, 'ok.png');
         assert.strictEqual(all[0].weight, 10);
@@ -152,7 +152,7 @@ suite("ImageOverridesStore", function () {
     test("save records size and hash for existing files", async function () {
         fs.writeFileSync(path.join(dir, 'a.png'), 'hello world', 'utf8');
         await store.save({ file: 'a.png', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
-        const [o] = await store.load();
+        const [o] = (await store.load()).images;
         assert.strictEqual(o.size, Buffer.byteLength('hello world'));
         assert.strictEqual(o.hash, crypto.createHash('sha256').update('hello world').digest('hex'));
     });
@@ -162,12 +162,12 @@ suite("ImageOverridesStore", function () {
         fs.writeFileSync(file, 'rename-me-content', 'utf8');
         await store.save({ file: 'a.png', weight: 33, dwellBonusSeconds: 5, minDisplaySeconds: 0 });
         fs.renameSync(file, path.join(dir, 'b.png'));
-        const list = await store.load();
+        const list = (await store.load()).images;
         assert.strictEqual(list.length, 1);
         assert.strictEqual(list[0].file, 'b.png');
         assert.strictEqual(list[0].weight, 33);
         assert.strictEqual(list[0].dwellBonusSeconds, 5);
-        const again = await store.load();
+        const again = (await store.load()).images;
         assert.strictEqual(again[0].file, 'b.png');
     });
 
@@ -177,7 +177,7 @@ suite("ImageOverridesStore", function () {
         fs.rmSync(path.join(dir, 'x.png'));
         fs.writeFileSync(path.join(dir, 'y1.png'), 'same-content', 'utf8');
         fs.writeFileSync(path.join(dir, 'y2.png'), 'same-content', 'utf8');
-        const list = await store.load();
+        const list = (await store.load()).images;
         assert.strictEqual(list[0].file, 'x.png');
     });
 
@@ -186,14 +186,14 @@ suite("ImageOverridesStore", function () {
         await store.save({ file: 'x.png', weight: 20, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
         fs.renameSync(path.join(dir, 'x.png'), path.join(dir, 'y.png'));
         fs.writeFileSync(path.join(dir, 'y.png'), 'edited-content-zz', 'utf8');
-        const list = await store.load();
+        const list = (await store.load()).images;
         assert.strictEqual(list[0].file, 'x.png');
     });
 
     test("does not adopt entries without a fingerprint", async function () {
         fs.writeFileSync(path.join(dir, '.background-cover.json'),
             JSON.stringify({ version: 1, images: [{ file: 'gone.png', weight: 12, dwellBonusSeconds: 0, minDisplaySeconds: 0 }] }), 'utf8');
-        const list = await store.load();
+        const list = (await store.load()).images;
         assert.strictEqual(list.length, 1);
         assert.strictEqual(list[0].file, 'gone.png');
     });
@@ -202,11 +202,65 @@ suite("ImageOverridesStore", function () {
         fs.writeFileSync(path.join(dir, 'c.png'), 'backfill-me', 'utf8');
         fs.writeFileSync(path.join(dir, '.background-cover.json'),
             JSON.stringify({ version: 1, images: [{ file: 'c.png', weight: 7, dwellBonusSeconds: 0, minDisplaySeconds: 0 }] }), 'utf8');
-        const list = await store.load();
+        const list = (await store.load()).images;
         assert.strictEqual(list[0].file, 'c.png');
         assert.strictEqual(list[0].size, Buffer.byteLength('backfill-me'));
         assert.strictEqual(list[0].hash, crypto.createHash('sha256').update('backfill-me').digest('hex'));
-        const again = await store.load();
+        const again = (await store.load()).images;
         assert.strictEqual(again[0].hash, list[0].hash);
+    });
+
+    test("saves and removes regex patterns", async function () {
+        await store.savePattern({ pattern: '^miku-\\d+\\.jpg$', weight: 20, dwellBonusSeconds: 5, minDisplaySeconds: 0 });
+        const data = await store.load();
+        assert.strictEqual(data.patterns.length, 1);
+        assert.strictEqual(data.patterns[0].pattern, '^miku-\\d+\\.jpg$');
+        assert.strictEqual(data.patterns[0].weight, 20);
+        assert.strictEqual(data.patterns[0].dwellBonusSeconds, 5);
+        await store.removePattern('^miku-\\d+\\.jpg$');
+        assert.deepStrictEqual((await store.load()).patterns, []);
+    });
+
+    test("rejects invalid regex patterns", async function () {
+        await assert.rejects(store.savePattern({ pattern: '(', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0 }));
+        assert.deepStrictEqual((await store.load()).patterns, []);
+    });
+
+    test("load returns empty patterns for legacy files", async function () {
+        fs.writeFileSync(path.join(dir, '.background-cover.json'),
+            JSON.stringify({ version: 1, images: [{ file: 'ok.png', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0 }] }), 'utf8');
+        const data = await store.load();
+        assert.deepStrictEqual(data.patterns, []);
+        assert.strictEqual(data.images.length, 1);
+    });
+});
+
+suite("effectiveOverride", function () {
+    const images = [
+        { file: 'a.png', weight: 30, dwellBonusSeconds: 1, minDisplaySeconds: 2 },
+        { file: 'b.png', weight: 0, dwellBonusSeconds: 0, minDisplaySeconds: 0 }
+    ];
+    const patterns = [
+        { pattern: '^miku-', weight: 20, dwellBonusSeconds: 5, minDisplaySeconds: 0 },
+        { pattern: 'jpg$', weight: 15, dwellBonusSeconds: 0, minDisplaySeconds: 3 }
+    ];
+
+    test("explicit entry wins over patterns", function () {
+        const eff = effectiveOverride(images, patterns, 'a.png');
+        assert.strictEqual(eff && eff.weight, 30);
+    });
+
+    test("first matching pattern wins", function () {
+        const eff = effectiveOverride([], patterns, 'miku-01.jpg');
+        assert.strictEqual(eff && eff.weight, 20);
+    });
+
+    test("pattern weight 0 excludes like an explicit entry", function () {
+        const eff = effectiveOverride(images, patterns, 'b.png');
+        assert.strictEqual(eff && eff.weight, 0);
+    });
+
+    test("no match returns undefined", function () {
+        assert.strictEqual(effectiveOverride(images, patterns, 'other.png'), undefined);
     });
 });

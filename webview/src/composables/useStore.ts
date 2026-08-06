@@ -35,6 +35,7 @@ export interface StudioState {
     pets: Array<{ value: string; label: string; desc: string; thumb: string }>;
     colorPalette: Array<{ name: string; rgb: string; hex: string }>;
     imageConfigs: Array<{ name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }>;
+    patterns: Array<{ pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; matchCount: number }>;
 }
 
 export const config = reactive<StudioConfig>({
@@ -67,7 +68,8 @@ export const state = reactive<StudioState>({
     folderImagesTotal: 0,
     pets: [],
     colorPalette: [],
-    imageConfigs: []
+    imageConfigs: [],
+    patterns: []
 });
 
 export interface StudioBrand {

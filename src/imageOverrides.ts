@@ -23,6 +23,22 @@ export interface ImageOverride {
     hash?: string;
 }
 
+export interface ImagePattern {
+    /** JavaScript regular expression matched against file basenames. */
+    pattern: string;
+    /** 0..100, 0 = excluded from random rotation. */
+    weight: number;
+    /** Seconds added to the base interval (may be negative). */
+    dwellBonusSeconds: number;
+    /** Floor for the display time in seconds (>= 0). */
+    minDisplaySeconds: number;
+}
+
+export interface OverrideStoreData {
+    images: ImageOverride[];
+    patterns: ImagePattern[];
+}
+
 export const IMAGE_OVERRIDE_FILE = '.background-cover.json';
 export const DEFAULT_WEIGHT = 10;
 
@@ -47,6 +63,7 @@ function sha256File(filePath: string): Promise<string> {
 interface PersistedFile {
     version?: number;
     images?: unknown[];
+    patterns?: unknown[];
 }
 
 function sanitizeNumber(value: unknown, fallback: number, min: number, max: number): number {
@@ -67,6 +84,45 @@ function toOverride(raw: unknown): ImageOverride | null {
     return { file, weight, dwellBonusSeconds, minDisplaySeconds, size, hash };
 }
 
+function toPattern(raw: unknown): ImagePattern | null {
+    if (!raw || typeof raw !== 'object') { return null; }
+    const o = raw as Record<string, unknown>;
+    if (typeof o.pattern !== 'string' || !o.pattern.trim()) { return null; }
+    const pattern = o.pattern;
+    try { new RegExp(pattern); } catch { return null; }
+    const weight = Math.round(sanitizeNumber(o.weight, DEFAULT_WEIGHT, 0, 10000));
+    const dwellBonusSeconds = sanitizeNumber(o.dwellBonusSeconds, 0, -86400, 86400);
+    const minDisplaySeconds = sanitizeNumber(o.minDisplaySeconds, 0, 0, 86400);
+    return { pattern, weight, dwellBonusSeconds, minDisplaySeconds };
+}
+
+/**
+ * Effective settings for a file: explicit per-image entry first, otherwise the
+ * first matching regex pattern, otherwise undefined (callers use defaults).
+ */
+export function effectiveOverride(
+    images: ImageOverride[],
+    patterns: ImagePattern[],
+    fileName: string
+): ImageOverride | undefined {
+    const base = path.basename(fileName);
+    const explicit = images.find(o => o.file === base);
+    if (explicit) { return explicit; }
+    for (const p of patterns) {
+        try {
+            if (new RegExp(p.pattern).test(base)) {
+                return {
+                    file: base,
+                    weight: p.weight,
+                    dwellBonusSeconds: p.dwellBonusSeconds,
+                    minDisplaySeconds: p.minDisplaySeconds
+                };
+            }
+        } catch { /* invalid pattern skipped at load */ }
+    }
+    return undefined;
+}
+
 export class ImageOverridesStore {
     private static readonly mutex = new Mutex();
     private readonly folderPath: string;
@@ -81,20 +137,20 @@ export class ImageOverridesStore {
         return path.join(folderPath, IMAGE_OVERRIDE_FILE);
     }
 
-    public load(): Promise<ImageOverride[]> {
+    public load(): Promise<OverrideStoreData> {
         return ImageOverridesStore.mutex.runExclusive(async () => {
-            const list = this.read();
-            let changed = await this.adoptOrphans(list);
-            changed = (await this.backfillFingerprints(list)) || changed;
+            const data = this.read();
+            let changed = await this.adoptOrphans(data.images);
+            changed = (await this.backfillFingerprints(data.images)) || changed;
             if (changed) {
-                await this.write(list);
+                await this.write(data.images, data.patterns);
             }
-            return list;
+            return data;
         });
     }
 
     public getByFile(file: string): Promise<ImageOverride | undefined> {
-        return this.load().then(list => list.find(o => o.file === path.basename(file)));
+        return this.load().then(data => effectiveOverride(data.images, data.patterns, path.basename(file)));
     }
 
     public save(override: ImageOverride): Promise<ImageOverride> {
@@ -110,11 +166,12 @@ export class ImageOverridesStore {
                 entry.size = fp.size;
                 entry.hash = fp.hash;
             }
-            const list = this.read();
+            const data = this.read();
+            const list = data.images;
             const idx = list.findIndex(o => o.file === entry.file);
             if (idx >= 0) { list[idx] = entry; } else { list.push(entry); }
             list.sort((a, b) => a.file.localeCompare(b.file, undefined, { numeric: true, sensitivity: 'base' }));
-            await this.write(list);
+            await this.write(list, data.patterns);
             return entry;
         });
     }
@@ -122,10 +179,37 @@ export class ImageOverridesStore {
     public remove(file: string): Promise<void> {
         const target = path.basename(file);
         return ImageOverridesStore.mutex.runExclusive(async () => {
-            const list = this.read();
-            const next = list.filter(o => o.file !== target);
-            if (next.length !== list.length) {
-                await this.write(next);
+            const data = this.read();
+            const next = data.images.filter(o => o.file !== target);
+            if (next.length !== data.images.length) {
+                await this.write(next, data.patterns);
+            }
+        });
+    }
+
+    public savePattern(pattern: ImagePattern): Promise<ImagePattern> {
+        const entry: ImagePattern = {
+            pattern: pattern.pattern,
+            weight: Math.round(sanitizeNumber(pattern.weight, DEFAULT_WEIGHT, 0, 10000)),
+            dwellBonusSeconds: sanitizeNumber(pattern.dwellBonusSeconds, 0, -86400, 86400),
+            minDisplaySeconds: sanitizeNumber(pattern.minDisplaySeconds, 0, 0, 86400)
+        };
+        try { new RegExp(entry.pattern); } catch { throw new Error(`invalid regex: ${entry.pattern}`); }
+        return ImageOverridesStore.mutex.runExclusive(async () => {
+            const data = this.read();
+            const idx = data.patterns.findIndex(p => p.pattern === entry.pattern);
+            if (idx >= 0) { data.patterns[idx] = entry; } else { data.patterns.push(entry); }
+            await this.write(data.images, data.patterns);
+            return entry;
+        });
+    }
+
+    public removePattern(pattern: string): Promise<void> {
+        return ImageOverridesStore.mutex.runExclusive(async () => {
+            const data = this.read();
+            const next = data.patterns.filter(p => p.pattern !== pattern);
+            if (next.length !== data.patterns.length) {
+                await this.write(data.images, next);
             }
         });
     }
@@ -205,25 +289,34 @@ export class ImageOverridesStore {
         return changed;
     }
 
-    private read(): ImageOverride[] {
+    private read(): OverrideStoreData {
+        const empty: OverrideStoreData = { images: [], patterns: [] };
         try {
-            if (!fs.existsSync(this.configPath)) { return []; }
+            if (!fs.existsSync(this.configPath)) { return empty; }
             const raw = fse.readJsonSync(this.configPath);
             const payload = (raw && typeof raw === 'object' ? raw : {}) as Partial<PersistedFile>;
-            if (!Array.isArray(payload.images)) { return []; }
             const out: ImageOverride[] = [];
-            for (const item of payload.images) {
-                const o = toOverride(item);
-                if (o) { out.push(o); }
+            if (Array.isArray(payload.images)) {
+                for (const item of payload.images) {
+                    const o = toOverride(item);
+                    if (o) { out.push(o); }
+                }
             }
-            return out;
+            const pats: ImagePattern[] = [];
+            if (Array.isArray(payload.patterns)) {
+                for (const item of payload.patterns) {
+                    const p = toPattern(item);
+                    if (p) { pats.push(p); }
+                }
+            }
+            return { images: out, patterns: pats };
         } catch {
-            return [];
+            return empty;
         }
     }
 
-    private async write(images: ImageOverride[]): Promise<void> {
-        const payload: PersistedFile = { version: 1, images };
+    private async write(images: ImageOverride[], patterns: ImagePattern[]): Promise<void> {
+        const payload: PersistedFile = { version: 1, images, ...(patterns.length ? { patterns } : {}) };
         const tmp = `${this.configPath}.${process.pid}.${Date.now()}.tmp`;
         try {
             await fse.writeJson(tmp, payload, { spaces: 2 });
