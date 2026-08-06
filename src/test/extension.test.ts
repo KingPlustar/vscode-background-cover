@@ -8,6 +8,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { naturalCompare, nextSequenceIndex, computeDwellSeconds, pickWeightedIndex, pickWeightedFile, isPathInside } from '../rotation';
 import { ImageOverridesStore } from '../imageOverrides';
 
@@ -146,5 +147,66 @@ suite("ImageOverridesStore", function () {
         assert.strictEqual(all.length, 1);
         assert.strictEqual(all[0].file, 'ok.png');
         assert.strictEqual(all[0].weight, 10);
+    });
+
+    test("save records size and hash for existing files", async function () {
+        fs.writeFileSync(path.join(dir, 'a.png'), 'hello world', 'utf8');
+        await store.save({ file: 'a.png', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
+        const [o] = await store.load();
+        assert.strictEqual(o.size, Buffer.byteLength('hello world'));
+        assert.strictEqual(o.hash, crypto.createHash('sha256').update('hello world').digest('hex'));
+    });
+
+    test("adopts config when the image is renamed", async function () {
+        const file = path.join(dir, 'a.png');
+        fs.writeFileSync(file, 'rename-me-content', 'utf8');
+        await store.save({ file: 'a.png', weight: 33, dwellBonusSeconds: 5, minDisplaySeconds: 0 });
+        fs.renameSync(file, path.join(dir, 'b.png'));
+        const list = await store.load();
+        assert.strictEqual(list.length, 1);
+        assert.strictEqual(list[0].file, 'b.png');
+        assert.strictEqual(list[0].weight, 33);
+        assert.strictEqual(list[0].dwellBonusSeconds, 5);
+        const again = await store.load();
+        assert.strictEqual(again[0].file, 'b.png');
+    });
+
+    test("does not adopt when two files share the fingerprint", async function () {
+        fs.writeFileSync(path.join(dir, 'x.png'), 'same-content', 'utf8');
+        await store.save({ file: 'x.png', weight: 20, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
+        fs.rmSync(path.join(dir, 'x.png'));
+        fs.writeFileSync(path.join(dir, 'y1.png'), 'same-content', 'utf8');
+        fs.writeFileSync(path.join(dir, 'y2.png'), 'same-content', 'utf8');
+        const list = await store.load();
+        assert.strictEqual(list[0].file, 'x.png');
+    });
+
+    test("does not adopt when content changed after rename", async function () {
+        fs.writeFileSync(path.join(dir, 'x.png'), 'original-content', 'utf8');
+        await store.save({ file: 'x.png', weight: 20, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
+        fs.renameSync(path.join(dir, 'x.png'), path.join(dir, 'y.png'));
+        fs.writeFileSync(path.join(dir, 'y.png'), 'edited-content-zz', 'utf8');
+        const list = await store.load();
+        assert.strictEqual(list[0].file, 'x.png');
+    });
+
+    test("does not adopt entries without a fingerprint", async function () {
+        fs.writeFileSync(path.join(dir, '.background-cover.json'),
+            JSON.stringify({ version: 1, images: [{ file: 'gone.png', weight: 12, dwellBonusSeconds: 0, minDisplaySeconds: 0 }] }), 'utf8');
+        const list = await store.load();
+        assert.strictEqual(list.length, 1);
+        assert.strictEqual(list[0].file, 'gone.png');
+    });
+
+    test("backfills fingerprints for existing entries without them", async function () {
+        fs.writeFileSync(path.join(dir, 'c.png'), 'backfill-me', 'utf8');
+        fs.writeFileSync(path.join(dir, '.background-cover.json'),
+            JSON.stringify({ version: 1, images: [{ file: 'c.png', weight: 7, dwellBonusSeconds: 0, minDisplaySeconds: 0 }] }), 'utf8');
+        const list = await store.load();
+        assert.strictEqual(list[0].file, 'c.png');
+        assert.strictEqual(list[0].size, Buffer.byteLength('backfill-me'));
+        assert.strictEqual(list[0].hash, crypto.createHash('sha256').update('backfill-me').digest('hex'));
+        const again = await store.load();
+        assert.strictEqual(again[0].hash, list[0].hash);
     });
 });

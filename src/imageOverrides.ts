@@ -4,6 +4,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import * as fse from 'fs-extra';
 import { Mutex } from 'async-mutex';
 
@@ -16,10 +17,32 @@ export interface ImageOverride {
     dwellBonusSeconds: number;
     /** Floor for the display time in seconds (>= 0). */
     minDisplaySeconds: number;
+    /** Optional fingerprint (byte size) used to detect renames. */
+    size?: number;
+    /** Optional fingerprint (SHA-256 hex) used to detect renames. */
+    hash?: string;
 }
 
 export const IMAGE_OVERRIDE_FILE = '.background-cover.json';
 export const DEFAULT_WEIGHT = 10;
+
+/** File extensions the rotation feature considers as images/videos. */
+const ROTATION_EXTS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.jfif', '.mp4', '.webm', '.ogg', '.mov'];
+
+function isRotationFile(name: string): boolean {
+    const lower = name.toLowerCase();
+    return ROTATION_EXTS.some(ext => lower.endsWith(ext));
+}
+
+function sha256File(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('sha256');
+        const stream = fs.createReadStream(filePath);
+        stream.on('error', reject);
+        stream.on('data', (chunk: Buffer) => hash.update(chunk));
+        stream.on('end', () => resolve(hash.digest('hex')));
+    });
+}
 
 interface PersistedFile {
     version?: number;
@@ -39,14 +62,18 @@ function toOverride(raw: unknown): ImageOverride | null {
     const weight = Math.round(sanitizeNumber(o.weight, DEFAULT_WEIGHT, 0, 10000));
     const dwellBonusSeconds = sanitizeNumber(o.dwellBonusSeconds, 0, -86400, 86400);
     const minDisplaySeconds = sanitizeNumber(o.minDisplaySeconds, 0, 0, 86400);
-    return { file, weight, dwellBonusSeconds, minDisplaySeconds };
+    const size = typeof o.size === 'number' && Number.isFinite(o.size) && o.size >= 0 ? o.size : undefined;
+    const hash = typeof o.hash === 'string' && /^[0-9a-f]{64}$/i.test(o.hash) ? o.hash.toLowerCase() : undefined;
+    return { file, weight, dwellBonusSeconds, minDisplaySeconds, size, hash };
 }
 
 export class ImageOverridesStore {
     private static readonly mutex = new Mutex();
+    private readonly folderPath: string;
     private readonly configPath: string;
 
     constructor(folderPath: string) {
+        this.folderPath = folderPath;
         this.configPath = path.join(folderPath, IMAGE_OVERRIDE_FILE);
     }
 
@@ -55,7 +82,15 @@ export class ImageOverridesStore {
     }
 
     public load(): Promise<ImageOverride[]> {
-        return ImageOverridesStore.mutex.runExclusive(() => this.read());
+        return ImageOverridesStore.mutex.runExclusive(async () => {
+            const list = this.read();
+            let changed = await this.adoptOrphans(list);
+            changed = (await this.backfillFingerprints(list)) || changed;
+            if (changed) {
+                await this.write(list);
+            }
+            return list;
+        });
     }
 
     public getByFile(file: string): Promise<ImageOverride | undefined> {
@@ -70,6 +105,11 @@ export class ImageOverridesStore {
             minDisplaySeconds: sanitizeNumber(override.minDisplaySeconds, 0, 0, 86400)
         };
         return ImageOverridesStore.mutex.runExclusive(async () => {
+            const fp = await this.computeFingerprint(entry.file);
+            if (fp) {
+                entry.size = fp.size;
+                entry.hash = fp.hash;
+            }
             const list = this.read();
             const idx = list.findIndex(o => o.file === entry.file);
             if (idx >= 0) { list[idx] = entry; } else { list.push(entry); }
@@ -88,6 +128,81 @@ export class ImageOverridesStore {
                 await this.write(next);
             }
         });
+    }
+
+    /** Size + SHA-256 of the given file, or undefined when unreadable. */
+    private async computeFingerprint(file: string): Promise<{ size: number; hash: string } | undefined> {
+        const full = path.join(this.folderPath, file);
+        try {
+            const st = fs.statSync(full);
+            if (!st.isFile()) { return undefined; }
+            const hash = await sha256File(full);
+            return { size: st.size, hash };
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * Stamp size/hash onto entries that lack them but whose file still exists,
+     * so entries saved before the fingerprint feature become migratable too.
+     */
+    private async backfillFingerprints(list: ImageOverride[]): Promise<boolean> {
+        let changed = false;
+        for (const o of list) {
+            if (o.hash !== undefined && o.size !== undefined) { continue; }
+            if (!fs.existsSync(path.join(this.folderPath, o.file))) { continue; }
+            const fp = await this.computeFingerprint(o.file);
+            if (fp) {
+                o.size = fp.size;
+                o.hash = fp.hash;
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    /**
+     * Migrate config entries whose file no longer exists to a renamed file:
+     * unique match on stored size + SHA-256. Returns true when any entry was
+     * migrated (caller persists the change).
+     */
+    private async adoptOrphans(list: ImageOverride[]): Promise<boolean> {
+        const orphans = list.filter(o => o.hash !== undefined && o.size !== undefined
+            && !fs.existsSync(path.join(this.folderPath, o.file)));
+        if (orphans.length === 0) { return false; }
+
+        let current: string[] = [];
+        try {
+            current = fs.readdirSync(this.folderPath).filter(isRotationFile);
+        } catch {
+            return false;
+        }
+
+        let changed = false;
+        for (const orphan of orphans) {
+            const sameSize: string[] = [];
+            for (const name of current) {
+                try {
+                    if (fs.statSync(path.join(this.folderPath, name)).size === orphan.size) {
+                        sameSize.push(name);
+                    }
+                } catch { /* skip unreadable files */ }
+            }
+            const matches: string[] = [];
+            for (const name of sameSize) {
+                try {
+                    if (await sha256File(path.join(this.folderPath, name)) === orphan.hash) {
+                        matches.push(name);
+                    }
+                } catch { /* skip unreadable files */ }
+            }
+            if (matches.length === 1) {
+                orphan.file = matches[0];
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     private read(): ImageOverride[] {
