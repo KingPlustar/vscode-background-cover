@@ -233,6 +233,26 @@ suite("ImageOverridesStore", function () {
         assert.deepStrictEqual(data.patterns, []);
         assert.strictEqual(data.images.length, 1);
     });
+
+    test("saves and loads opacity for images and patterns", async function () {
+        await store.save({ file: 'a.png', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: 0.5 });
+        const [o] = (await store.load()).images;
+        assert.strictEqual(o.opacity, 0.5);
+        await store.savePattern({ pattern: '^miku-', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: 0.3 });
+        const data = await store.load();
+        assert.strictEqual(data.patterns[0].opacity, 0.3);
+    });
+
+    test("sanitizes opacity values", async function () {
+        await store.save({ file: 'a.png', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: 1.5 });
+        await store.save({ file: 'b.png', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: -0.5 });
+        await store.save({ file: 'c.png', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: NaN });
+        const all = (await store.load()).images;
+        const byName = (n: string) => all.find(o => o.file === n)!;
+        assert.strictEqual(byName('a.png').opacity, 0.8);
+        assert.strictEqual(byName('b.png').opacity, 0);
+        assert.strictEqual(byName('c.png').opacity, undefined);
+    });
 });
 
 suite("effectiveOverride", function () {
@@ -262,5 +282,15 @@ suite("effectiveOverride", function () {
 
     test("no match returns undefined", function () {
         assert.strictEqual(effectiveOverride(images, patterns, 'other.png'), undefined);
+    });
+
+    test("opacity precedence: explicit over pattern, pattern over default", function () {
+        const imgs = [{ file: 'a.png', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: 0.4 }];
+        const pats = [{ pattern: 'a\\.png$', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: 0.6 }];
+        const explicit = effectiveOverride(imgs, pats, 'a.png');
+        assert.strictEqual(explicit && explicit.opacity, 0.4);
+        const viaPattern = effectiveOverride([], pats, 'a.png');
+        assert.strictEqual(viaPattern && viaPattern.opacity, 0.6);
+        assert.strictEqual(effectiveOverride([], [], 'a.png'), undefined);
     });
 });

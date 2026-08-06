@@ -133,6 +133,7 @@
                             {{ t('weight') }}: {{ item.weight }}
                             · {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s
                             · {{ t('minDisplay') }}: {{ item.minDisplaySeconds }}s
+                            <span v-if="item.opacity !== undefined"> · {{ t('opacity') }}: {{ item.opacity }}</span>
                         </span>
                     </div>
                     <div class="image-config-actions">
@@ -177,6 +178,7 @@
                             {{ t('weight') }}: {{ item.weight }}
                             · {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s
                             · {{ t('minDisplay') }}: {{ item.minDisplaySeconds }}s
+                            <span v-if="item.opacity !== undefined"> · {{ t('opacity') }}: {{ item.opacity }}</span>
                             · {{ t('patternMatchCount').replace('{n}', String(item.matchCount)) }}
                         </span>
                     </div>
@@ -213,15 +215,20 @@
                 </el-form-item>
                 <div v-if="patternPreviewText" class="field-hint pattern-preview-text">{{ patternPreviewText }}</div>
                 <div v-if="patternPreviewFiles.length" class="pattern-preview-list">
-                    <div v-for="file in patternPreviewFiles" :key="file.name" class="pattern-preview-item" :title="file.name">
-                        <video v-if="isVideoPath(file.name)" :src="file.display" muted loop playsinline preload="metadata" />
-                        <img v-else-if="file.display" :src="file.display" :alt="file.name" />
+                    <div v-for="file in patternPreviewFiles" :key="file.name" class="pattern-preview-item" :class="{ 'is-selected': file.name === patternPreviewTarget }" :title="file.name" :style="{ background: previewBackdrop }" @click="patternPreviewTarget = file.name">
+                        <video v-if="isVideoPath(file.name)" :src="file.display" muted loop playsinline preload="metadata" :style="{ opacity: patternPreviewOpacity }" />
+                        <img v-else-if="file.display" :src="file.display" :alt="file.name" :style="{ opacity: patternPreviewOpacity }" />
                         <div v-else class="dialog-preview-fallback">
                             <el-icon><Picture /></el-icon>
                         </div>
                     </div>
                 </div>
                 <div v-if="patternPreviewMoreText" class="field-hint">{{ patternPreviewMoreText }}</div>
+                <el-button v-if="patternPreviewTarget" link type="primary" size="small" class="real-preview-btn" @click="realPreviewPattern">
+                    <el-icon><View /></el-icon>
+                    {{ t('realPreview') }}
+                </el-button>
+                <div v-if="patternPreviewTarget" class="field-hint preview-approx-hint">{{ t('previewApproxHint') }}</div>
                 <el-form-item :label="t('weight')">
                     <el-input-number v-model="patternForm.weight" :min="0" :max="10000" :step="1" controls-position="right" class="dialog-input" />
                     <div class="field-hint">{{ t('weightHint') }}</div>
@@ -233,6 +240,21 @@
                 <el-form-item :label="t('minDisplay')">
                     <el-input-number v-model="patternForm.minDisplaySeconds" :min="0" :max="86400" :step="1" controls-position="right" class="dialog-input" />
                     <div class="field-hint">{{ t('minDisplayHint') }}</div>
+                </el-form-item>
+                <el-form-item :label="t('opacity')">
+                    <div class="opacity-row">
+                        <el-switch v-model="patternForm.followGlobalOpacity" size="small" />
+                        <span class="opacity-follow-label">{{ t('followGlobalOpacity') }}</span>
+                        <el-slider
+                            v-model="patternForm.opacity"
+                            :min="0"
+                            :max="0.8"
+                            :step="0.05"
+                            :disabled="patternForm.followGlobalOpacity"
+                            class="opacity-slider"
+                        />
+                        <span class="level-value">{{ patternPreviewOpacity.toFixed(2) }}</span>
+                    </div>
                 </el-form-item>
             </el-form>
             <template #footer>
@@ -249,13 +271,18 @@
             append-to-body
         >
             <el-form label-position="top" size="small">
-                <div class="dialog-preview">
-                    <video v-if="editingDisplay && isVideoPath(editingName)" :src="editingDisplay" muted loop playsinline preload="metadata" />
-                    <img v-else-if="editingDisplay" :src="editingDisplay" :alt="editingName" />
+                <div class="dialog-preview" :style="{ background: previewBackdrop }">
+                    <video v-if="editingDisplay && isVideoPath(editingName)" :src="editingDisplay" muted loop playsinline preload="metadata" :style="{ opacity: dialogPreviewOpacity }" />
+                    <img v-else-if="editingDisplay" :src="editingDisplay" :alt="editingName" :style="{ opacity: dialogPreviewOpacity }" />
                     <div v-else class="dialog-preview-fallback">
                         <el-icon><Picture /></el-icon>
                     </div>
                 </div>
+                <el-button v-if="editingDisplay" link type="primary" size="small" class="real-preview-btn" @click="realPreviewImage">
+                    <el-icon><View /></el-icon>
+                    {{ t('realPreview') }}
+                </el-button>
+                <div v-if="editingDisplay" class="field-hint preview-approx-hint">{{ t('previewApproxHint') }}</div>
                 <div class="dialog-file">{{ editingName }}</div>
                 <el-form-item :label="t('weight')">
                     <el-input-number v-model="form.weight" :min="0" :max="10000" :step="1" controls-position="right" class="dialog-input" />
@@ -268,6 +295,21 @@
                 <el-form-item :label="t('minDisplay')">
                     <el-input-number v-model="form.minDisplaySeconds" :min="0" :max="86400" :step="1" controls-position="right" class="dialog-input" />
                     <div class="field-hint">{{ t('minDisplayHint') }}</div>
+                </el-form-item>
+                <el-form-item :label="t('opacity')">
+                    <div class="opacity-row">
+                        <el-switch v-model="form.followGlobalOpacity" size="small" />
+                        <span class="opacity-follow-label">{{ t('followGlobalOpacity') }}</span>
+                        <el-slider
+                            v-model="form.opacity"
+                            :min="0"
+                            :max="0.8"
+                            :step="0.05"
+                            :disabled="form.followGlobalOpacity"
+                            class="opacity-slider"
+                        />
+                        <span class="level-value">{{ dialogPreviewOpacity.toFixed(2) }}</span>
+                    </div>
                 </el-form-item>
             </el-form>
             <template #footer>
@@ -330,7 +372,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture, Filter } from '@element-plus/icons-vue';
+import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture, Filter, View } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 import { useI18n } from '../composables/useI18n';
 import { useBridge } from '../composables/useBridge';
@@ -372,7 +414,33 @@ function onLevelChange(v: number | undefined) {
 const dialogVisible = ref(false);
 const editingName = ref('');
 const editingDisplay = ref('');
-const form = reactive({ weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
+const form = reactive({ weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, followGlobalOpacity: true, opacity: 0.2 });
+
+const dialogPreviewOpacity = computed(() => {
+    const globalOpacity = Number(config.opacity ?? 0.2);
+    return form.followGlobalOpacity ? globalOpacity : Number(form.opacity ?? globalOpacity);
+});
+
+function isOpaqueColor(c: string): boolean {
+    if (!c || c === 'transparent') { return false; }
+    const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/.exec(c);
+    if (!m) { return false; }
+    const alpha = m[4] === undefined ? 1 : parseFloat(m[4]);
+    return alpha >= 1;
+}
+
+function getThemeBackdropColor(): string {
+    try {
+        const probe = document.createElement('div');
+        probe.style.cssText = 'position:absolute;visibility:hidden;left:-9999px;background:var(--vscode-editor-background, var(--vscode-sideBar-background, #1e1e1e));';
+        document.body.appendChild(probe);
+        const c = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        if (isOpaqueColor(c)) { return c; }
+    } catch { /* fall through */ }
+    return '#1e1e1e';
+}
+const previewBackdrop = getThemeBackdropColor();
 
 function addConfig() {
     bridge.post({ type: 'pickImageForConfig' });
@@ -387,15 +455,19 @@ bridge.on('imageConfigPick', (data: any) => {
     form.weight = existing?.weight ?? 10;
     form.dwellBonusSeconds = existing?.dwellBonusSeconds ?? 0;
     form.minDisplaySeconds = existing?.minDisplaySeconds ?? 0;
+    form.followGlobalOpacity = existing?.opacity === undefined;
+    form.opacity = existing?.opacity ?? Number(config.opacity ?? 0.2);
     dialogVisible.value = true;
 });
 
-function openEdit(item: { name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }) {
+function openEdit(item: { name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; opacity: number | undefined }) {
     editingName.value = item.name;
     editingDisplay.value = item.display ?? '';
     form.weight = item.weight;
     form.dwellBonusSeconds = item.dwellBonusSeconds;
     form.minDisplaySeconds = item.minDisplaySeconds;
+    form.followGlobalOpacity = item.opacity === undefined;
+    form.opacity = item.opacity ?? Number(config.opacity ?? 0.2);
     dialogVisible.value = true;
 }
 
@@ -405,10 +477,35 @@ function saveConfig() {
         name: editingName.value,
         weight: form.weight,
         dwellBonusSeconds: form.dwellBonusSeconds,
-        minDisplaySeconds: form.minDisplaySeconds
+        minDisplaySeconds: form.minDisplaySeconds,
+        opacity: form.followGlobalOpacity ? undefined : form.opacity
     });
     dialogVisible.value = false;
 }
+
+const realPreviewActive = ref(false);
+let realPreviewSyncTimer: number | undefined;
+
+function realPreviewImage() {
+    if (!editingName.value) { return; }
+    realPreviewActive.value = true;
+    bridge.post({ type: 'applyRealPreview', name: editingName.value, opacity: dialogPreviewOpacity.value });
+}
+
+watch([() => form.followGlobalOpacity, () => form.opacity], () => {
+    if (!realPreviewActive.value) { return; }
+    if (realPreviewSyncTimer) { clearTimeout(realPreviewSyncTimer); }
+    realPreviewSyncTimer = window.setTimeout(() => {
+        bridge.post({ type: 'applyRealPreview', name: editingName.value, opacity: dialogPreviewOpacity.value });
+    }, 200);
+});
+
+watch(dialogVisible, (v) => {
+    if (!v) {
+        realPreviewActive.value = false;
+        bridge.post({ type: 'revertRealPreview' });
+    }
+});
 
 function removeConfig(item: { name: string }) {
     ElMessageBox.confirm(t('configDeleteConfirm'), t('imageConfigDelete'), {
@@ -422,7 +519,13 @@ function removeConfig(item: { name: string }) {
 
 // --- Regex batch rules ---
 const patternDialogVisible = ref(false);
-const patternForm = reactive({ pattern: '', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
+const patternForm = reactive({ pattern: '', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, followGlobalOpacity: true, opacity: 0.2 });
+const patternPreviewTarget = ref('');
+
+const patternPreviewOpacity = computed(() => {
+    const globalOpacity = Number(config.opacity ?? 0.2);
+    return patternForm.followGlobalOpacity ? globalOpacity : Number(patternForm.opacity ?? globalOpacity);
+});
 const patternPreviewText = ref('');
 const patternPreviewCount = ref(0);
 const patternPreviewFiles = ref<{ name: string; display: string }[]>([]);
@@ -433,20 +536,26 @@ function openPatternAdd() {
     patternForm.weight = 10;
     patternForm.dwellBonusSeconds = 0;
     patternForm.minDisplaySeconds = 0;
+    patternForm.followGlobalOpacity = true;
+    patternForm.opacity = Number(config.opacity ?? 0.2);
     patternPreviewText.value = '';
     patternPreviewCount.value = 0;
     patternPreviewFiles.value = [];
+    patternPreviewTarget.value = '';
     patternDialogVisible.value = true;
 }
 
-function openPatternEdit(item: { pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }) {
+function openPatternEdit(item: { pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; opacity: number | undefined }) {
     patternForm.pattern = item.pattern;
     patternForm.weight = item.weight;
     patternForm.dwellBonusSeconds = item.dwellBonusSeconds;
     patternForm.minDisplaySeconds = item.minDisplaySeconds;
+    patternForm.followGlobalOpacity = item.opacity === undefined;
+    patternForm.opacity = item.opacity ?? Number(config.opacity ?? 0.2);
     patternPreviewText.value = '';
     patternPreviewCount.value = 0;
     patternPreviewFiles.value = [];
+    patternPreviewTarget.value = '';
     patternDialogVisible.value = true;
     requestPatternPreview();
 }
@@ -464,6 +573,9 @@ bridge.on('patternPreview', (data: any) => {
     if (data?.pattern !== patternForm.pattern) { return; }
     patternPreviewCount.value = typeof data.count === 'number' ? data.count : 0;
     patternPreviewFiles.value = Array.isArray(data?.files) ? data.files : [];
+    if (!patternPreviewFiles.value.some(f => f.name === patternPreviewTarget.value)) {
+        patternPreviewTarget.value = patternPreviewFiles.value[0]?.name ?? '';
+    }
     patternPreviewText.value = patternPreviewCount.value > 0
         ? t('patternMatchCount').replace('{n}', String(patternPreviewCount.value))
         : t('patternNoMatch');
@@ -481,10 +593,33 @@ function savePattern() {
         pattern: patternForm.pattern,
         weight: patternForm.weight,
         dwellBonusSeconds: patternForm.dwellBonusSeconds,
-        minDisplaySeconds: patternForm.minDisplaySeconds
+        minDisplaySeconds: patternForm.minDisplaySeconds,
+        opacity: patternForm.followGlobalOpacity ? undefined : patternForm.opacity
     });
     patternDialogVisible.value = false;
 }
+
+function realPreviewPattern() {
+    if (!patternPreviewTarget.value) { return; }
+    realPreviewActive.value = true;
+    bridge.post({ type: 'applyRealPreview', name: patternPreviewTarget.value, opacity: patternPreviewOpacity.value });
+}
+
+watch([() => patternForm.followGlobalOpacity, () => patternForm.opacity, () => patternPreviewTarget.value], () => {
+    if (!realPreviewActive.value) { return; }
+    if (realPreviewSyncTimer) { clearTimeout(realPreviewSyncTimer); }
+    realPreviewSyncTimer = window.setTimeout(() => {
+        if (!patternPreviewTarget.value) { return; }
+        bridge.post({ type: 'applyRealPreview', name: patternPreviewTarget.value, opacity: patternPreviewOpacity.value });
+    }, 200);
+});
+
+watch(patternDialogVisible, (v) => {
+    if (!v) {
+        realPreviewActive.value = false;
+        bridge.post({ type: 'revertRealPreview' });
+    }
+});
 
 function removePattern(item: { pattern: string }) {
     ElMessageBox.confirm(t('patternDeleteConfirm'), t('patternDelete'), {
@@ -632,7 +767,7 @@ function removePattern(item: { pattern: string }) {
     border-radius: 6px;
     overflow: hidden;
     margin-bottom: 8px;
-    background: #000;
+    background: var(--vscode-editor-background, #000);
     border: 1px solid rgba(120, 140, 200, 0.18);
     img, video {
         width: 100%;
@@ -711,15 +846,39 @@ function removePattern(item: { pattern: string }) {
     width: 90px;
     border-radius: 6px;
     overflow: hidden;
-    background: #000;
+    background: var(--vscode-editor-background, #000);
     border: 1px solid rgba(120, 140, 200, 0.18);
+    cursor: pointer;
     img, video {
         width: 100%;
         aspect-ratio: 16 / 10;
         object-fit: cover;
         display: block;
     }
+    &.is-selected {
+        border-color: var(--studio-accent);
+        box-shadow: 0 0 0 2px var(--studio-accent);
+    }
 }
+
+.opacity-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+}
+
+.opacity-follow-label {
+    font-size: 11px;
+    color: var(--vscode-descriptionForeground);
+    white-space: nowrap;
+}
+
+.opacity-slider { flex: 1; }
+
+.real-preview-btn { margin-bottom: 8px; }
+
+.preview-approx-hint { margin: -4px 0 8px; }
 
 .anti-sticky-hint {
     font-size: 11px;

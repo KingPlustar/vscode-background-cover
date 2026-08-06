@@ -139,8 +139,8 @@ export class StudioViewProvider implements WebviewViewProvider {
         const pkg = (this.ctx.extension && (this.ctx.extension as any).packageJSON) || {};
         const brandName: string = pkg.displayName || pkg.name || 'background-cover';
 
-        let imageConfigs: { name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }[] = [];
-        let patterns: { pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; matchCount: number }[] = [];
+        let imageConfigs: { name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; opacity: number | undefined }[] = [];
+        let patterns: { pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; matchCount: number; opacity: number | undefined }[] = [];
         if (folder && fs.existsSync(folder) && fs.statSync(folder).isDirectory()) {
             try {
                 const data = await new ImageOverridesStore(folder).load();
@@ -149,7 +149,8 @@ export class StudioViewProvider implements WebviewViewProvider {
                     display: this.toWebviewUri(path.join(folder, o.file)),
                     weight: o.weight,
                     dwellBonusSeconds: o.dwellBonusSeconds,
-                    minDisplaySeconds: o.minDisplaySeconds
+                    minDisplaySeconds: o.minDisplaySeconds,
+                    opacity: o.opacity
                 }));
                 const names = PickList.listFolderImages(folder);
                 patterns = data.patterns.map(p => ({
@@ -157,7 +158,8 @@ export class StudioViewProvider implements WebviewViewProvider {
                     weight: p.weight,
                     dwellBonusSeconds: p.dwellBonusSeconds,
                     minDisplaySeconds: p.minDisplaySeconds,
-                    matchCount: countPatternMatches(p.pattern, names)
+                    matchCount: countPatternMatches(p.pattern, names),
+                    opacity: p.opacity
                 }));
             } catch {
                 imageConfigs = [];
@@ -269,6 +271,14 @@ export class StudioViewProvider implements WebviewViewProvider {
                 await this.removePattern(msg);
                 return;
 
+            case 'applyRealPreview':
+                await this.applyRealPreview(msg);
+                return;
+
+            case 'revertRealPreview':
+                await this.revertRealPreview();
+                return;
+
             case 'applyDecorations':
                 await this.applyDecorations(msg.state || {});
                 return;
@@ -337,9 +347,10 @@ export class StudioViewProvider implements WebviewViewProvider {
         try {
             await new ImageOverridesStore(folder).save({
                 file: name,
-                weight: sanitizeNumber(msg.weight, 1, 0, 100),
+                weight: sanitizeNumber(msg.weight, 10, 0, 10000),
                 dwellBonusSeconds: sanitizeNumber(msg.dwellBonusSeconds, 0, -86400, 86400),
-                minDisplaySeconds: sanitizeNumber(msg.minDisplaySeconds, 0, 0, 86400)
+                minDisplaySeconds: sanitizeNumber(msg.minDisplaySeconds, 0, 0, 86400),
+                opacity: sanitizeOpacityLike(msg.opacity)
             });
         } catch (e: any) {
             window.showErrorMessage(`Failed to save image config / 保存图片配置失败: ${e?.message ?? e}`);
@@ -400,7 +411,8 @@ export class StudioViewProvider implements WebviewViewProvider {
                 pattern,
                 weight: sanitizeNumber(msg.weight, 10, 0, 10000),
                 dwellBonusSeconds: sanitizeNumber(msg.dwellBonusSeconds, 0, -86400, 86400),
-                minDisplaySeconds: sanitizeNumber(msg.minDisplaySeconds, 0, 0, 86400)
+                minDisplaySeconds: sanitizeNumber(msg.minDisplaySeconds, 0, 0, 86400),
+                opacity: sanitizeOpacityLike(msg.opacity)
             });
         } catch (e: any) {
             window.showErrorMessage(`Invalid regex pattern / ???????: ${e?.message ?? e}`);
@@ -418,6 +430,22 @@ export class StudioViewProvider implements WebviewViewProvider {
         if (!pattern) { return; }
         await new ImageOverridesStore(folder).removePattern(pattern);
         this.pushState();
+    }
+
+    /** Temporarily apply a real background with the given opacity (not persisted). */
+    private async applyRealPreview(msg: any): Promise<void> {
+        const cfg = workspace.getConfiguration('backgroundCover');
+        const folder = cfg.get<string>('randomImageFolder') || '';
+        const name = typeof msg.name === 'string' ? path.basename(msg.name) : '';
+        if (!folder || !name) { return; }
+        const full = path.join(folder, name);
+        if (!isPathInside(folder, full)) { return; }
+        await PickList.applyRealPreview(full, sanitizeNumber(msg.opacity, 0.2, 0, 0.8));
+    }
+
+    /** Restore the background that was active before a temporary preview. */
+    private async revertRealPreview(): Promise<void> {
+        await PickList.revertRealPreview();
     }
 
     private async applyDecorations(state: any): Promise<void> {
@@ -540,6 +568,12 @@ export class StudioViewProvider implements WebviewViewProvider {
 function sanitizeNumber(value: unknown, fallback: number, min: number, max: number): number {
     const n = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
     return Math.min(max, Math.max(min, n));
+}
+
+/** Opacity from the webview: finite numbers are clamped to 0-0.8, else undefined. */
+function sanitizeOpacityLike(value: unknown): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) { return undefined; }
+    return Math.min(0.8, Math.max(0, value));
 }
 
 /** Count files in the rotation folder matching a regex pattern. */

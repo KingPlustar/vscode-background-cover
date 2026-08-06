@@ -320,6 +320,44 @@ export class PickList {
         PickList.nextChangeAt = 0;
     }
 
+    private static realPreviewState: { prevPath: string; prevOpacity: number } | undefined;
+
+    /** Temporarily apply a real background with a given opacity (not persisted). */
+    public static async applyRealPreview(path: string, opacity: number): Promise<void> {
+        const config = workspace.getConfiguration('backgroundCover');
+        const prevPath = config.get<string>('imagePath') || '';
+        const prevOpacity = config.get<number>('opacity', 0.2);
+        PickList.realPreviewState = { prevPath, prevOpacity };
+        const pl = new PickList(config);
+        pl.opacity = Math.min(0.8, Math.max(0, opacity));
+        pl.imgPath = path;
+        try {
+            await pl.updateDom(false, BlendHelper.autoBlendModel() as string);
+        } finally {
+            PickList.itemList = undefined;
+        }
+    }
+
+    /** Restore the background and opacity that were active before a temporary preview. */
+    public static async revertRealPreview(): Promise<void> {
+        const state = PickList.realPreviewState;
+        PickList.realPreviewState = undefined;
+        if (!state) { return; }
+        const config = workspace.getConfiguration('backgroundCover');
+        const pl = new PickList(config);
+        pl.opacity = state.prevOpacity;
+        try {
+            if (state.prevPath) {
+                pl.imgPath = state.prevPath;
+                await pl.updateDom(false, BlendHelper.autoBlendModel() as string);
+            } else {
+                await pl.updateDom(true);
+            }
+        } finally {
+            PickList.itemList = undefined;
+        }
+    }
+
     /**
      * (Re)arm the auto-update timer. When `afterImagePath` is provided and the
      * unit is seconds, the next change is scheduled after that image's
@@ -838,6 +876,21 @@ export class PickList {
             }
         }
         return path.normalize(trimmed).replace(/\\+/g, '/');
+    }
+
+    /** Effective opacity for a file: explicit > pattern > global. */
+    private async effectiveOpacityFor(path?: string): Promise<number> {
+        const globalOpacity = this.config.get<number>('opacity', 0.2);
+        if (!path || this.isOnlineUrl(path)) { return globalOpacity; }
+        const folder = this.config.get<string>('randomImageFolder') || '';
+        if (!folder || !isPathInside(folder, path)) { return globalOpacity; }
+        try {
+            const data = await new ImageOverridesStore(folder).load();
+            const eff = effectiveOverride(data.images, data.patterns, path);
+            return eff && eff.opacity !== undefined ? eff.opacity : globalOpacity;
+        } catch {
+            return globalOpacity;
+        }
     }
 
     private isOnlineUrl(url?: string): boolean {
@@ -1453,6 +1506,7 @@ export class PickList {
         const shouldDisableAuto = persist && clearOnlineCache && this.isSingleImagePath(path);
         PickList.lastAppliedPath = path;
         PickList.weightSwitchCount += 1;
+        this.opacity = await this.effectiveOpacityFor(path);
         await this.setConfigValue('imagePath', path, true, persist);
         if (shouldDisableAuto) {
             await this.disableAutoRandomForSingleImage();
