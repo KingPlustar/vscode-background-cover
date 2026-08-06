@@ -30,14 +30,14 @@
                 <span class="row-label">{{ t('antiStickyLevel') }}</span>
                 <div class="level-group">
                     <el-slider
-                        :model-value="Number(config.antiStickyLevel ?? 2)"
+                        v-model="levelDraft"
                         :min="1"
                         :max="10"
                         :step="1"
                         class="level-slider"
-                        @change="(v: any) => bridge.post({ type: 'setConfig', key: 'antiStickyLevel', value: v })"
+                        @change="onLevelChange"
                     />
-                    <span class="level-value">{{ Number(config.antiStickyLevel ?? 2) }}</span>
+                    <span class="level-value">{{ levelDraft }}</span>
                 </div>
             </div>
             <div v-if="config.playMode === 'random' && config.antiSticky" class="anti-sticky-hint">{{ t('antiStickyLevelHint') }}</div>
@@ -242,7 +242,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 import { useI18n } from '../composables/useI18n';
@@ -274,6 +274,14 @@ function onOpenCache()    { bridge.post({ type: 'runAction', action: ActionType.
 function onSupport()      { bridge.post({ type: 'runAction', action: ActionType.OpenFilePath, path: '//resources//support.jpg' }); }
 
 // --- Per-image rotation settings ---
+const levelDraft = ref<number>(2);
+watch(() => config.antiStickyLevel, (v) => {
+    levelDraft.value = typeof v === 'number' ? v : 2;
+}, { immediate: true });
+function onLevelChange(v: number | undefined) {
+    bridge.post({ type: 'setConfig', key: 'antiStickyLevel', value: typeof v === 'number' ? v : 2 });
+}
+
 const dialogVisible = ref(false);
 const editingName = ref('');
 const editingDisplay = ref('');
