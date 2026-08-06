@@ -26,6 +26,22 @@
             </div>
             <div v-if="config.playMode === 'random'" class="anti-sticky-hint">{{ t('antiStickyHint') }}</div>
 
+            <div v-if="config.playMode === 'random' && config.antiSticky" class="row">
+                <span class="row-label">{{ t('antiStickyLevel') }}</span>
+                <div class="level-group">
+                    <el-slider
+                        :model-value="Number(config.antiStickyLevel ?? 2)"
+                        :min="1"
+                        :max="10"
+                        :step="1"
+                        class="level-slider"
+                        @change="(v: any) => bridge.post({ type: 'setConfig', key: 'antiStickyLevel', value: v })"
+                    />
+                    <span class="level-value">{{ Number(config.antiStickyLevel ?? 2) }}</span>
+                </div>
+            </div>
+            <div v-if="config.playMode === 'random' && config.antiSticky" class="anti-sticky-hint">{{ t('antiStickyLevelHint') }}</div>
+
             <div class="row">
                 <span class="row-label">{{ t('playOrder') }}</span>
                 <el-select
@@ -444,5 +460,21 @@ function removeConfig(item: { name: string }) {
     color: var(--vscode-descriptionForeground);
     line-height: 1.4;
     padding: 0 0 6px;
+}
+
+.level-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 55%;
+}
+
+.level-slider { flex: 1; }
+
+.level-value {
+    font-size: 12px;
+    min-width: 18px;
+    text-align: right;
+    color: var(--vscode-foreground);
 }
 </style>

@@ -78,11 +78,11 @@ export default {
     imageConfigEdit:      'Edit',
     imageConfigDelete:    'Delete',
     imageConfigName:      'Image',
-    weight:               'Weight (random mode)',
+    weight:               'Weight',
     weightHint:           '10 is the baseline: above 10 appears more often, below 10 less often; 0 excludes the image',
-    dwellBonus:           'Dwell Bonus (s)',
+    dwellBonus:           'Dwell Bonus',
     dwellBonusHint:       'Timer (seconds) mode only; positive extends, negative shortens',
-    minDisplay:           'Min Display Time (s)',
+    minDisplay:           'Min Display Time',
     minDisplayHint:       'Timer (seconds) mode only; always shown at least this long',
     imageConfigSave:      'Save',
     imageConfigCancel:    'Cancel',
@@ -90,6 +90,8 @@ export default {
     configDeleteConfirm:  "Remove this image's rotation settings?",
     antiSticky:           'No Repeats',
     antiStickyHint:       'When enabled, recently shown images get temporarily reduced weight and never appear twice in a row; when disabled, picks are pure weighted random (repeats allowed).',
+    antiStickyLevel:      'Intensity',
+    antiStickyLevelHint:  '1 = no adjacent repeats; higher values exclude longer and recover slower',
     applyChanges:         'Reload to apply changes',
     applyChangesHint:     'Changes in this section require a window reload. Click the button below after editing.'
 };

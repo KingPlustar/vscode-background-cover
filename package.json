@@ -145,6 +145,13 @@
                     "default": true,
                     "description": "No repeats: temporarily reduce the weight of recently shown images / 防重复：最近展示的图片临时降权，避免连续重复"
                 },
+                "backgroundCover.antiStickyLevel": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 10,
+                    "default": 2,
+                    "description": "Anti-sticky intensity (1-10): switches an image stays excluded after being picked, and rounds to fully recover / 防重复力度（1-10）：图片被选中后排除的切换数及恢复所需的轮数"
+                },
                 "backgroundCover.sizeModel": {
                     "type": "string",
                     "enum": [

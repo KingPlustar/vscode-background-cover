@@ -1044,9 +1044,9 @@ export class PickList {
         }
 
         // Anti-sticky weights (configurable): when enabled, every eligible
-        // image is excluded for one full round, then recovers 1/n of its base
-        // weight per round. The round length uses the configured image count
-        // when any exist, otherwise all eligible images. n = max(2, ceil(total/10)).
+        // image is excluded for `level` switches after being picked, then
+        // recovers 1/level per round (round = `level` switches), so it takes
+        // `level` rounds to return to full weight. level = antiStickyLevel (1-10).
         const folderKey = this.normalizePathKey(folder);
         if (PickList.weightStateFolder !== folderKey) {
             PickList.weightStateFolder = folderKey;
@@ -1058,12 +1058,9 @@ export class PickList {
         const current = antiSticky && PickList.lastAppliedPath && isPathInside(folder, PickList.lastAppliedPath)
             ? path.basename(PickList.lastAppliedPath)
             : undefined;
-        const eligibleCount = sorted.filter(f => (weights.get(f) ?? 10) > 0).length;
-        // Round length = configured images (weight > 0, still on disk); fall
-        // back to all eligible images when nothing is configured.
-        const configuredCount = sorted.filter(f => weights.has(f) && (weights.get(f) ?? 0) > 0).length;
-        const total = configuredCount > 0 ? configuredCount : (eligibleCount > 0 ? eligibleCount : sorted.length);
-        const n = Math.max(2, Math.ceil(total / 10));
+        const level = Math.min(10, Math.max(1, Math.round(this.config.get<number>('antiStickyLevel', 2))));
+        const total = level;
+        const n = level;
         const chosen = pickWeightedFile(
             sorted,
             f => {

@@ -15,6 +15,7 @@ export interface StudioConfig {
     playMode: string;
     triggerMode: string;
     antiSticky: boolean;
+    antiStickyLevel: number;
     sizeModel: string;
     blendModel: string;
     randomImageFolder: string;
@@ -47,6 +48,7 @@ export const config = reactive<StudioConfig>({
     playMode: 'random',
     triggerMode: 'timer',
     antiSticky: true,
+    antiStickyLevel: 2,
     sizeModel: 'cover',
     blendModel: 'auto',
     randomImageFolder: ''
