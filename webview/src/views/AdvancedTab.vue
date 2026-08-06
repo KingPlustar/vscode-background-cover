@@ -256,6 +256,7 @@
                             :disabled="patternForm.followGlobalOpacity"
                             :format-tooltip="formatOpacityTooltip"
                             class="opacity-slider"
+                            @input="onPatternOpacityPctChange"
                             @change="onPatternOpacityPctChange"
                         />
                         <span class="level-value">{{ (patternOpacityPct / 100).toFixed(2) }}</span>
@@ -316,6 +317,7 @@
                             :disabled="form.followGlobalOpacity"
                             :format-tooltip="formatOpacityTooltip"
                             class="opacity-slider"
+                            @input="onOpacityPctChange"
                             @change="onOpacityPctChange"
                         />
                         <span class="level-value">{{ (opacityPct / 100).toFixed(2) }}</span>
