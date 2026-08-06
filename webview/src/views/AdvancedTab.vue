@@ -120,7 +120,15 @@
             <div v-else class="image-config-list">
                 <div v-for="item in state.imageConfigs" :key="item.name" class="image-config-item">
                     <div class="image-config-info">
-                        <span class="image-config-name" :title="item.name">{{ item.name }}</span>
+                        <el-tooltip :disabled="!item.display" placement="right" :show-after="150" :show-arrow="false" popper-class="image-config-tooltip">
+                            <template #content>
+                                <div class="hover-preview">
+                                    <video v-if="isVideoPath(item.name)" :src="item.display" muted loop playsinline preload="metadata" />
+                                    <img v-else :src="item.display" :alt="item.name" />
+                                </div>
+                            </template>
+                            <span class="image-config-name">{{ item.name }}</span>
+                        </el-tooltip>
                         <span class="image-config-meta">
                             {{ t('weight') }}: {{ item.weight }}
                             · {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s
@@ -154,6 +162,13 @@
             append-to-body
         >
             <el-form label-position="top" size="small">
+                <div class="dialog-preview">
+                    <video v-if="editingDisplay && isVideoPath(editingName)" :src="editingDisplay" muted loop playsinline preload="metadata" />
+                    <img v-else-if="editingDisplay" :src="editingDisplay" :alt="editingName" />
+                    <div v-else class="dialog-preview-fallback">
+                        <el-icon><Picture /></el-icon>
+                    </div>
+                </div>
                 <div class="dialog-file">{{ editingName }}</div>
                 <el-form-item :label="t('weight')">
                     <el-input-number v-model="form.weight" :min="0" :max="10000" :step="1" controls-position="right" class="dialog-input" />
@@ -234,6 +249,7 @@ import { useI18n } from '../composables/useI18n';
 import { useBridge } from '../composables/useBridge';
 import { config, state } from '../composables/useStore';
 import { ActionType, SIZE_MODES, BLEND_MODES } from '../constants';
+import { isVideoPath } from '../utils/media';
 
 const { t } = useI18n();
 const bridge = useBridge();
@@ -260,6 +276,7 @@ function onSupport()      { bridge.post({ type: 'runAction', action: ActionType.
 // --- Per-image rotation settings ---
 const dialogVisible = ref(false);
 const editingName = ref('');
+const editingDisplay = ref('');
 const form = reactive({ weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0 });
 
 function addConfig() {
@@ -271,14 +288,16 @@ bridge.on('imageConfigPick', (data: any) => {
     if (!name) { return; }
     const existing = state.imageConfigs.find(i => i.name === name);
     editingName.value = name;
+    editingDisplay.value = data?.display ?? existing?.display ?? '';
     form.weight = existing?.weight ?? 10;
     form.dwellBonusSeconds = existing?.dwellBonusSeconds ?? 0;
     form.minDisplaySeconds = existing?.minDisplaySeconds ?? 0;
     dialogVisible.value = true;
 });
 
-function openEdit(item: { name: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }) {
+function openEdit(item: { name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }) {
     editingName.value = item.name;
+    editingDisplay.value = item.display ?? '';
     form.weight = item.weight;
     form.dwellBonusSeconds = item.dwellBonusSeconds;
     form.minDisplaySeconds = item.minDisplaySeconds;
@@ -438,12 +457,62 @@ function removeConfig(item: { name: string }) {
 
 .add-config-btn { margin-top: 4px; }
 
+.dialog-preview {
+    border-radius: 6px;
+    overflow: hidden;
+    margin-bottom: 8px;
+    background: #000;
+    border: 1px solid rgba(120, 140, 200, 0.18);
+    img, video {
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        object-fit: cover;
+        display: block;
+    }
+}
+
+.dialog-preview-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    color: var(--vscode-descriptionForeground);
+    font-size: 24px;
+}
+
 .dialog-file {
     font-size: 12px;
     font-weight: 600;
     color: var(--vscode-foreground);
     margin-bottom: 8px;
     word-break: break-all;
+}
+
+.hover-preview {
+    width: 120px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #000;
+    img, video {
+        width: 100%;
+        aspect-ratio: 16 / 10;
+        object-fit: cover;
+        display: block;
+    }
+}
+
+:global(.image-config-tooltip.el-popper),
+:global(.image-config-tooltip.el-popper.is-dark) {
+    --el-popper-bg-color-dark: transparent;
+    --el-bg-color-overlay: transparent;
+    --el-border-color-light: transparent;
+    --el-text-color-primary: transparent;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    border-radius: 6px !important;
 }
 
 .field-hint {

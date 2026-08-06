@@ -139,12 +139,13 @@ export class StudioViewProvider implements WebviewViewProvider {
         const pkg = (this.ctx.extension && (this.ctx.extension as any).packageJSON) || {};
         const brandName: string = pkg.displayName || pkg.name || 'background-cover';
 
-        let imageConfigs: { name: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }[] = [];
+        let imageConfigs: { name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number }[] = [];
         if (folder && fs.existsSync(folder) && fs.statSync(folder).isDirectory()) {
             try {
                 const overrides = await new ImageOverridesStore(folder).load();
                 imageConfigs = overrides.map(o => ({
                     name: o.file,
+                    display: this.toWebviewUri(path.join(folder, o.file)),
                     weight: o.weight,
                     dwellBonusSeconds: o.dwellBonusSeconds,
                     minDisplaySeconds: o.minDisplaySeconds
@@ -300,7 +301,7 @@ export class StudioViewProvider implements WebviewViewProvider {
             window.showWarningMessage('The selected file must be inside the source folder / 所选文件必须在来源目录内');
             return;
         }
-        this.view?.webview.postMessage({ type: 'imageConfigPick', name: path.basename(selected) });
+        this.view?.webview.postMessage({ type: 'imageConfigPick', name: path.basename(selected), display: this.toWebviewUri(selected) });
     }
 
     /** Persist one image's weight / dwell bonus / min display time. */
