@@ -107,6 +107,8 @@ export default {
     patternSave:          'Save',
     patternCancel:        'Cancel',
     followGlobalOpacity:  'Follow global opacity',
+    followRule:           'Use rule/default',
+    resetField:           'Reset',
     realPreview:          'Real Preview',
     previewApproxHint:    'Thumbnails do not show the opacity effect; use "Real Preview" for the exact result.',
     applyChanges:         'Reload to apply changes',

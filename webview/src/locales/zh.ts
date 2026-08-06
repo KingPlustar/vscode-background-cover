@@ -107,6 +107,8 @@ export default {
     patternSave:          '保存',
     patternCancel:        '取消',
     followGlobalOpacity:  '跟随全局透明度',
+    followRule:           '跟随规则/默认',
+    resetField:           '重置',
     realPreview:          '临时真实预览',
     previewApproxHint:    '缩略图不叠加透明度效果；请用“临时真实预览”查看真实效果',
     applyChanges:         '重启窗口生效',

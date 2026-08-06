@@ -130,10 +130,11 @@
                             <span class="image-config-name">{{ item.name }}</span>
                         </el-tooltip>
                         <span class="image-config-meta">
-                            {{ t('weight') }}: {{ item.weight }}
-                            · {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s
-                            · {{ t('minDisplay') }}: {{ item.minDisplaySeconds }}s
+                            <template v-if="item.weight !== undefined">{{ t('weight') }}: {{ item.weight }}</template>
+                            <template v-if="item.dwellBonusSeconds !== undefined"> · {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s</template>
+                            <template v-if="item.minDisplaySeconds !== undefined"> · {{ t('minDisplay') }}: {{ item.minDisplaySeconds }}s</template>
                             <span v-if="item.opacity !== undefined"> · {{ t('opacity') }}: {{ item.opacity }}</span>
+                            <span v-if="item.weight === undefined && item.dwellBonusSeconds === undefined && item.minDisplaySeconds === undefined && item.opacity === undefined">{{ t('followRule') }}</span>
                         </span>
                     </div>
                     <div class="image-config-actions">
@@ -243,23 +244,21 @@
                     <div class="field-hint">{{ t('minDisplayHint') }}</div>
                 </el-form-item>
                 <el-form-item :label="t('opacity')">
-                    <div class="opacity-row">
-                        <el-switch v-model="patternForm.followGlobalOpacity" size="small" />
-                        <span class="opacity-follow-label">{{ t('followGlobalOpacity') }}</span>
-                    </div>
                     <div class="opacity-row opacity-slider-row">
                         <el-slider
                             v-model="patternOpacityPct"
                             :min="0"
                             :max="80"
                             :step="1"
-                            :disabled="patternForm.followGlobalOpacity"
                             :format-tooltip="formatOpacityTooltip"
                             class="opacity-slider"
                             @input="onPatternOpacityPctChange"
                             @change="onPatternOpacityPctChange"
                         />
                         <span class="level-value">{{ (patternOpacityPct / 100).toFixed(2) }}</span>
+                        <el-button v-if="!patternOpacityFollowed" link circle size="small" class="field-reset-btn" :title="t('resetField')" @click="resetPatternOpacity">
+                            <el-icon><RefreshLeft /></el-icon>
+                        </el-button>
                     </div>
                 </el-form-item>
             </el-form>
@@ -292,35 +291,48 @@
                 <div v-if="editingDisplay" class="field-hint preview-approx-hint">{{ t('previewApproxHint') }}</div>
                 <div class="dialog-file">{{ editingName }}</div>
                 <el-form-item :label="t('weight')">
-                    <el-input-number v-model="form.weight" :min="0" :max="10000" :step="1" controls-position="right" class="dialog-input" />
+                    <div class="opacity-row">
+                        <el-input-number v-model="form.weight" :min="0" :max="10000" :step="1" :placeholder="t('followRule')" controls-position="right" class="dialog-input" />
+                        <el-button v-if="form.weight !== undefined" link circle size="small" class="field-reset-btn" :title="t('resetField')" @click="form.weight = undefined">
+                            <el-icon><RefreshLeft /></el-icon>
+                        </el-button>
+                    </div>
                     <div class="field-hint">{{ t('weightHint') }}</div>
                 </el-form-item>
                 <el-form-item :label="t('dwellBonus')">
-                    <el-input-number v-model="form.dwellBonusSeconds" :min="-86400" :max="86400" :step="1" controls-position="right" class="dialog-input" />
+                    <div class="opacity-row">
+                        <el-input-number v-model="form.dwellBonusSeconds" :min="-86400" :max="86400" :step="1" :placeholder="t('followRule')" controls-position="right" class="dialog-input" />
+                        <el-button v-if="form.dwellBonusSeconds !== undefined" link circle size="small" class="field-reset-btn" :title="t('resetField')" @click="form.dwellBonusSeconds = undefined">
+                            <el-icon><RefreshLeft /></el-icon>
+                        </el-button>
+                    </div>
                     <div class="field-hint">{{ t('dwellBonusHint') }}</div>
                 </el-form-item>
                 <el-form-item :label="t('minDisplay')">
-                    <el-input-number v-model="form.minDisplaySeconds" :min="0" :max="86400" :step="1" controls-position="right" class="dialog-input" />
+                    <div class="opacity-row">
+                        <el-input-number v-model="form.minDisplaySeconds" :min="0" :max="86400" :step="1" :placeholder="t('followRule')" controls-position="right" class="dialog-input" />
+                        <el-button v-if="form.minDisplaySeconds !== undefined" link circle size="small" class="field-reset-btn" :title="t('resetField')" @click="form.minDisplaySeconds = undefined">
+                            <el-icon><RefreshLeft /></el-icon>
+                        </el-button>
+                    </div>
                     <div class="field-hint">{{ t('minDisplayHint') }}</div>
                 </el-form-item>
                 <el-form-item :label="t('opacity')">
-                    <div class="opacity-row">
-                        <el-switch v-model="form.followGlobalOpacity" size="small" />
-                        <span class="opacity-follow-label">{{ t('followGlobalOpacity') }}</span>
-                    </div>
                     <div class="opacity-row opacity-slider-row">
                         <el-slider
                             v-model="opacityPct"
                             :min="0"
                             :max="80"
                             :step="1"
-                            :disabled="form.followGlobalOpacity"
                             :format-tooltip="formatOpacityTooltip"
                             class="opacity-slider"
                             @input="onOpacityPctChange"
                             @change="onOpacityPctChange"
                         />
                         <span class="level-value">{{ (opacityPct / 100).toFixed(2) }}</span>
+                        <el-button v-if="!opacityFollowed" link circle size="small" class="field-reset-btn" :title="t('resetField')" @click="resetOpacity">
+                            <el-icon><RefreshLeft /></el-icon>
+                        </el-button>
                     </div>
                 </el-form-item>
             </el-form>
@@ -384,7 +396,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture, Filter, View } from '@element-plus/icons-vue';
+import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture, Filter, View, RefreshLeft } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 import { useI18n } from '../composables/useI18n';
 import { useBridge } from '../composables/useBridge';
@@ -426,16 +438,22 @@ function onLevelChange(v: number | undefined) {
 const dialogVisible = ref(false);
 const editingName = ref('');
 const editingDisplay = ref('');
-const form = reactive({ weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, followGlobalOpacity: true, opacity: 0.2 });
+const form = reactive({
+    weight: undefined as number | undefined,
+    dwellBonusSeconds: undefined as number | undefined,
+    minDisplaySeconds: undefined as number | undefined,
+    opacity: 0.2
+});
+const opacityFollowed = ref(true);
 
 const dialogPreviewOpacity = computed(() => {
     const globalOpacity = Number(config.opacity ?? 0.2);
-    return form.followGlobalOpacity ? globalOpacity : Number(form.opacity ?? globalOpacity);
+    return opacityFollowed.value ? globalOpacity : Number(form.opacity ?? globalOpacity);
 });
 
 const opacityPct = ref<number>(Math.round(Number(config.opacity ?? 0.2) * 100));
-watch([() => form.followGlobalOpacity, () => form.opacity, () => config.opacity], () => {
-    const eff = form.followGlobalOpacity ? Number(config.opacity ?? 0.2) : Number(form.opacity ?? 0.2);
+watch([opacityFollowed, () => form.opacity, () => config.opacity], () => {
+    const eff = opacityFollowed.value ? Number(config.opacity ?? 0.2) : Number(form.opacity ?? 0.2);
     opacityPct.value = Math.round(eff * 100);
 }, { immediate: true });
 function formatOpacityTooltip(v: number): string {
@@ -443,7 +461,12 @@ function formatOpacityTooltip(v: number): string {
 }
 
 function onOpacityPctChange(v: number | undefined) {
+    opacityFollowed.value = false;
     form.opacity = Number(((v ?? 0) / 100).toFixed(2));
+}
+function resetOpacity() {
+    opacityFollowed.value = true;
+    form.opacity = Number(config.opacity ?? 0.2);
 }
 
 
@@ -457,21 +480,21 @@ bridge.on('imageConfigPick', (data: any) => {
     const existing = state.imageConfigs.find(i => i.name === name);
     editingName.value = name;
     editingDisplay.value = data?.display ?? existing?.display ?? '';
-    form.weight = existing?.weight ?? 10;
-    form.dwellBonusSeconds = existing?.dwellBonusSeconds ?? 0;
-    form.minDisplaySeconds = existing?.minDisplaySeconds ?? 0;
-    form.followGlobalOpacity = existing?.opacity === undefined;
+    form.weight = existing?.weight;
+    form.dwellBonusSeconds = existing?.dwellBonusSeconds;
+    form.minDisplaySeconds = existing?.minDisplaySeconds;
+    opacityFollowed.value = existing?.opacity === undefined;
     form.opacity = existing?.opacity ?? Number(config.opacity ?? 0.2);
     dialogVisible.value = true;
 });
 
-function openEdit(item: { name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; opacity: number | undefined }) {
+function openEdit(item: { name: string; display: string; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; opacity: number | undefined }) {
     editingName.value = item.name;
     editingDisplay.value = item.display ?? '';
     form.weight = item.weight;
     form.dwellBonusSeconds = item.dwellBonusSeconds;
     form.minDisplaySeconds = item.minDisplaySeconds;
-    form.followGlobalOpacity = item.opacity === undefined;
+    opacityFollowed.value = item.opacity === undefined;
     form.opacity = item.opacity ?? Number(config.opacity ?? 0.2);
     dialogVisible.value = true;
 }
@@ -483,7 +506,7 @@ function saveConfig() {
         weight: form.weight,
         dwellBonusSeconds: form.dwellBonusSeconds,
         minDisplaySeconds: form.minDisplaySeconds,
-        opacity: form.followGlobalOpacity ? undefined : form.opacity
+        opacity: opacityFollowed.value ? undefined : form.opacity
     });
     dialogVisible.value = false;
 }
@@ -502,7 +525,7 @@ function realPreviewImage() {
     bridge.post({ type: 'applyRealPreview', name: editingName.value, opacity: dialogPreviewOpacity.value });
 }
 
-watch([() => form.followGlobalOpacity, () => form.opacity], () => {
+watch([opacityFollowed, () => form.opacity], () => {
     if (!realPreviewActive.value) { return; }
     if (realPreviewSyncTimer) { clearTimeout(realPreviewSyncTimer); }
     realPreviewSyncTimer = window.setTimeout(() => {
@@ -529,21 +552,27 @@ function removeConfig(item: { name: string }) {
 
 // --- Regex batch rules ---
 const patternDialogVisible = ref(false);
-const patternForm = reactive({ pattern: '', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, followGlobalOpacity: true, opacity: 0.2 });
+const patternForm = reactive({ pattern: '', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: 0.2 });
+const patternOpacityFollowed = ref(true);
 const patternPreviewTarget = ref('');
 
 const patternPreviewOpacity = computed(() => {
     const globalOpacity = Number(config.opacity ?? 0.2);
-    return patternForm.followGlobalOpacity ? globalOpacity : Number(patternForm.opacity ?? globalOpacity);
+    return patternOpacityFollowed.value ? globalOpacity : Number(patternForm.opacity ?? globalOpacity);
 });
 
 const patternOpacityPct = ref<number>(Math.round(Number(config.opacity ?? 0.2) * 100));
-watch([() => patternForm.followGlobalOpacity, () => patternForm.opacity, () => config.opacity], () => {
-    const eff = patternForm.followGlobalOpacity ? Number(config.opacity ?? 0.2) : Number(patternForm.opacity ?? 0.2);
+watch([patternOpacityFollowed, () => patternForm.opacity, () => config.opacity], () => {
+    const eff = patternOpacityFollowed.value ? Number(config.opacity ?? 0.2) : Number(patternForm.opacity ?? 0.2);
     patternOpacityPct.value = Math.round(eff * 100);
 }, { immediate: true });
 function onPatternOpacityPctChange(v: number | undefined) {
+    patternOpacityFollowed.value = false;
     patternForm.opacity = Number(((v ?? 0) / 100).toFixed(2));
+}
+function resetPatternOpacity() {
+    patternOpacityFollowed.value = true;
+    patternForm.opacity = Number(config.opacity ?? 0.2);
 }
 const patternPreviewText = ref('');
 const patternPreviewCount = ref(0);
@@ -555,7 +584,7 @@ function openPatternAdd() {
     patternForm.weight = 10;
     patternForm.dwellBonusSeconds = 0;
     patternForm.minDisplaySeconds = 0;
-    patternForm.followGlobalOpacity = true;
+    patternOpacityFollowed.value = true;
     patternForm.opacity = Number(config.opacity ?? 0.2);
     patternPreviewText.value = '';
     patternPreviewCount.value = 0;
@@ -569,7 +598,7 @@ function openPatternEdit(item: { pattern: string; weight: number; dwellBonusSeco
     patternForm.weight = item.weight;
     patternForm.dwellBonusSeconds = item.dwellBonusSeconds;
     patternForm.minDisplaySeconds = item.minDisplaySeconds;
-    patternForm.followGlobalOpacity = item.opacity === undefined;
+    patternOpacityFollowed.value = item.opacity === undefined;
     patternForm.opacity = item.opacity ?? Number(config.opacity ?? 0.2);
     patternPreviewText.value = '';
     patternPreviewCount.value = 0;
@@ -613,7 +642,7 @@ function savePattern() {
         weight: patternForm.weight,
         dwellBonusSeconds: patternForm.dwellBonusSeconds,
         minDisplaySeconds: patternForm.minDisplaySeconds,
-        opacity: patternForm.followGlobalOpacity ? undefined : patternForm.opacity
+        opacity: patternOpacityFollowed.value ? undefined : patternForm.opacity
     });
     patternDialogVisible.value = false;
 }
@@ -629,7 +658,7 @@ function realPreviewPattern() {
     bridge.post({ type: 'applyRealPreview', name: patternPreviewTarget.value, opacity: patternPreviewOpacity.value });
 }
 
-watch([() => patternForm.followGlobalOpacity, () => patternForm.opacity, () => patternPreviewTarget.value], () => {
+watch([patternOpacityFollowed, () => patternForm.opacity, () => patternPreviewTarget.value], () => {
     if (!realPreviewActive.value) { return; }
     if (realPreviewSyncTimer) { clearTimeout(realPreviewSyncTimer); }
     realPreviewSyncTimer = window.setTimeout(() => {
@@ -901,6 +930,10 @@ function removePattern(item: { pattern: string }) {
 }
 
 .opacity-slider { flex: 1; }
+
+.opacity-row .dialog-input { flex: 1; width: auto; }
+
+.field-reset-btn { flex: 0 0 auto; padding: 0; }
 
 .real-preview-btn { margin-bottom: 8px; }
 

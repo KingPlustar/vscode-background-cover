@@ -146,7 +146,7 @@ suite("ImageOverridesStore", function () {
         const all = (await store.load()).images;
         assert.strictEqual(all.length, 1);
         assert.strictEqual(all[0].file, 'ok.png');
-        assert.strictEqual(all[0].weight, 10);
+        assert.strictEqual(all[0].weight, undefined);
     });
 
     test("save records size and hash for existing files", async function () {
@@ -256,41 +256,53 @@ suite("ImageOverridesStore", function () {
 });
 
 suite("effectiveOverride", function () {
-    const images = [
-        { file: 'a.png', weight: 30, dwellBonusSeconds: 1, minDisplaySeconds: 2 },
-        { file: 'b.png', weight: 0, dwellBonusSeconds: 0, minDisplaySeconds: 0 }
-    ];
     const patterns = [
         { pattern: '^miku-', weight: 20, dwellBonusSeconds: 5, minDisplaySeconds: 0 },
         { pattern: 'jpg$', weight: 15, dwellBonusSeconds: 0, minDisplaySeconds: 3 }
     ];
 
-    test("explicit entry wins over patterns", function () {
-        const eff = effectiveOverride(images, patterns, 'a.png');
-        assert.strictEqual(eff && eff.weight, 30);
-    });
-
     test("first matching pattern wins", function () {
         const eff = effectiveOverride([], patterns, 'miku-01.jpg');
-        assert.strictEqual(eff && eff.weight, 20);
+        assert.strictEqual(eff.weight, 20);
+        assert.strictEqual(eff.dwellBonusSeconds, 5);
+    });
+
+    test("explicit fields override matching pattern fields", function () {
+        const imgs = [{ file: 'miku-01.jpg', weight: 30 }];
+        const eff = effectiveOverride(imgs, patterns, 'miku-01.jpg');
+        assert.strictEqual(eff.weight, 30);           // explicit weight wins
+        assert.strictEqual(eff.dwellBonusSeconds, 5); // dwell falls through to pattern
+    });
+
+    test("unset explicit fields fall through to defaults", function () {
+        const imgs = [{ file: 'other.png', dwellBonusSeconds: 9 }];
+        const eff = effectiveOverride(imgs, [], 'other.png');
+        assert.strictEqual(eff.weight, 10);
+        assert.strictEqual(eff.dwellBonusSeconds, 9);
+        assert.strictEqual(eff.minDisplaySeconds, 0);
     });
 
     test("pattern weight 0 excludes like an explicit entry", function () {
-        const eff = effectiveOverride(images, patterns, 'b.png');
-        assert.strictEqual(eff && eff.weight, 0);
+        const pats = [{ pattern: 'b\\.png$', weight: 0, dwellBonusSeconds: 0, minDisplaySeconds: 0 }];
+        const eff = effectiveOverride([], pats, 'b.png');
+        assert.strictEqual(eff.weight, 0);
     });
 
-    test("no match returns undefined", function () {
-        assert.strictEqual(effectiveOverride(images, patterns, 'other.png'), undefined);
+    test("no match returns defaults", function () {
+        const eff = effectiveOverride([], [], 'other.png');
+        assert.strictEqual(eff.weight, 10);
+        assert.strictEqual(eff.dwellBonusSeconds, 0);
+        assert.strictEqual(eff.minDisplaySeconds, 0);
+        assert.strictEqual(eff.opacity, undefined);
     });
 
     test("opacity precedence: explicit over pattern, pattern over default", function () {
-        const imgs = [{ file: 'a.png', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: 0.4 }];
+        const imgs = [{ file: 'a.png', opacity: 0.4 }];
         const pats = [{ pattern: 'a\\.png$', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: 0.6 }];
         const explicit = effectiveOverride(imgs, pats, 'a.png');
-        assert.strictEqual(explicit && explicit.opacity, 0.4);
+        assert.strictEqual(explicit.opacity, 0.4);
         const viaPattern = effectiveOverride([], pats, 'a.png');
-        assert.strictEqual(viaPattern && viaPattern.opacity, 0.6);
-        assert.strictEqual(effectiveOverride([], [], 'a.png'), undefined);
+        assert.strictEqual(viaPattern.opacity, 0.6);
+        assert.strictEqual(effectiveOverride([], [], 'a.png').opacity, undefined);
     });
 });

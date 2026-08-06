@@ -11,12 +11,12 @@ import { Mutex } from 'async-mutex';
 export interface ImageOverride {
     /** Basename of the image file inside the rotation folder. */
     file: string;
-    /** 0..100, 0 = excluded from random rotation. */
-    weight: number;
-    /** Seconds added to the base interval (may be negative). */
-    dwellBonusSeconds: number;
-    /** Floor for the display time in seconds (>= 0). */
-    minDisplaySeconds: number;
+    /** 0..100, 0 = excluded; undefined falls through to rule/default. */
+    weight?: number;
+    /** Seconds added to the base interval (may be negative); undefined falls through. */
+    dwellBonusSeconds?: number;
+    /** Floor for the display time in seconds (>= 0); undefined falls through. */
+    minDisplaySeconds?: number;
     /** Optional fingerprint (byte size) used to detect renames. */
     size?: number;
     /** Optional fingerprint (SHA-256 hex) used to detect renames. */
@@ -41,6 +41,15 @@ export interface ImagePattern {
 export interface OverrideStoreData {
     images: ImageOverride[];
     patterns: ImagePattern[];
+}
+
+/** Fully resolved effective settings (explicit fields merged over pattern/default). */
+export interface ResolvedOverride {
+    file: string;
+    weight: number;
+    dwellBonusSeconds: number;
+    minDisplaySeconds: number;
+    opacity: number | undefined;
 }
 
 export const IMAGE_OVERRIDE_FILE = '.background-cover.json';
@@ -80,14 +89,29 @@ function sanitizeOpacity(value: unknown): number | undefined {
     return Math.min(0.8, Math.max(0, value));
 }
 
+function sanitizeWeight(value: unknown): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) { return undefined; }
+    return Math.round(sanitizeNumber(value, DEFAULT_WEIGHT, 0, 10000));
+}
+
+function sanitizeDwellBonus(value: unknown): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) { return undefined; }
+    return sanitizeNumber(value, 0, -86400, 86400);
+}
+
+function sanitizeMinDisplay(value: unknown): number | undefined {
+    if (typeof value !== 'number' || !Number.isFinite(value)) { return undefined; }
+    return sanitizeNumber(value, 0, 0, 86400);
+}
+
 function toOverride(raw: unknown): ImageOverride | null {
     if (!raw || typeof raw !== 'object') { return null; }
     const o = raw as Record<string, unknown>;
     if (typeof o.file !== 'string' || !o.file.trim()) { return null; }
     const file = path.basename(o.file);
-    const weight = Math.round(sanitizeNumber(o.weight, DEFAULT_WEIGHT, 0, 10000));
-    const dwellBonusSeconds = sanitizeNumber(o.dwellBonusSeconds, 0, -86400, 86400);
-    const minDisplaySeconds = sanitizeNumber(o.minDisplaySeconds, 0, 0, 86400);
+    const weight = sanitizeWeight(o.weight);
+    const dwellBonusSeconds = sanitizeDwellBonus(o.dwellBonusSeconds);
+    const minDisplaySeconds = sanitizeMinDisplay(o.minDisplaySeconds);
     const size = typeof o.size === 'number' && Number.isFinite(o.size) && o.size >= 0 ? o.size : undefined;
     const hash = typeof o.hash === 'string' && /^[0-9a-f]{64}$/i.test(o.hash) ? o.hash.toLowerCase() : undefined;
     const opacity = sanitizeOpacity(o.opacity);
@@ -108,31 +132,38 @@ function toPattern(raw: unknown): ImagePattern | null {
 }
 
 /**
- * Effective settings for a file: explicit per-image entry first, otherwise the
- * first matching regex pattern, otherwise undefined (callers use defaults).
+ * Effective settings for a file, merged per field:
+ * explicit per-image entry > first matching regex pattern > defaults.
  */
 export function effectiveOverride(
     images: ImageOverride[],
     patterns: ImagePattern[],
     fileName: string
-): ImageOverride | undefined {
+): ResolvedOverride {
     const base = path.basename(fileName);
-    const explicit = images.find(o => o.file === base);
-    if (explicit) { return explicit; }
+    let weight = DEFAULT_WEIGHT;
+    let dwellBonusSeconds = 0;
+    let minDisplaySeconds = 0;
+    let opacity: number | undefined;
     for (const p of patterns) {
         try {
             if (new RegExp(p.pattern).test(base)) {
-                return {
-                    file: base,
-                    weight: p.weight,
-                    dwellBonusSeconds: p.dwellBonusSeconds,
-                    minDisplaySeconds: p.minDisplaySeconds,
-                    opacity: p.opacity
-                };
+                weight = p.weight;
+                dwellBonusSeconds = p.dwellBonusSeconds;
+                minDisplaySeconds = p.minDisplaySeconds;
+                opacity = p.opacity;
+                break;
             }
         } catch { /* invalid pattern skipped at load */ }
     }
-    return undefined;
+    const explicit = images.find(o => o.file === base);
+    if (explicit) {
+        if (explicit.weight !== undefined) { weight = explicit.weight; }
+        if (explicit.dwellBonusSeconds !== undefined) { dwellBonusSeconds = explicit.dwellBonusSeconds; }
+        if (explicit.minDisplaySeconds !== undefined) { minDisplaySeconds = explicit.minDisplaySeconds; }
+        if (explicit.opacity !== undefined) { opacity = explicit.opacity; }
+    }
+    return { file: base, weight, dwellBonusSeconds, minDisplaySeconds, opacity };
 }
 
 export class ImageOverridesStore {
@@ -161,16 +192,16 @@ export class ImageOverridesStore {
         });
     }
 
-    public getByFile(file: string): Promise<ImageOverride | undefined> {
+    public getByFile(file: string): Promise<ResolvedOverride> {
         return this.load().then(data => effectiveOverride(data.images, data.patterns, path.basename(file)));
     }
 
     public save(override: ImageOverride): Promise<ImageOverride> {
         const entry: ImageOverride = {
             file: path.basename(override.file),
-            weight: Math.round(sanitizeNumber(override.weight, DEFAULT_WEIGHT, 0, 10000)),
-            dwellBonusSeconds: sanitizeNumber(override.dwellBonusSeconds, 0, -86400, 86400),
-            minDisplaySeconds: sanitizeNumber(override.minDisplaySeconds, 0, 0, 86400),
+            weight: sanitizeWeight(override.weight),
+            dwellBonusSeconds: sanitizeDwellBonus(override.dwellBonusSeconds),
+            minDisplaySeconds: sanitizeMinDisplay(override.minDisplaySeconds),
             opacity: sanitizeOpacity(override.opacity)
         };
         return ImageOverridesStore.mutex.runExclusive(async () => {

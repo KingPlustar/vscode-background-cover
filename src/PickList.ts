@@ -887,7 +887,7 @@ export class PickList {
         try {
             const data = await new ImageOverridesStore(folder).load();
             const eff = effectiveOverride(data.images, data.patterns, path);
-            return eff && eff.opacity !== undefined ? eff.opacity : globalOpacity;
+            return eff.opacity !== undefined ? eff.opacity : globalOpacity;
         } catch {
             return globalOpacity;
         }
@@ -1119,8 +1119,7 @@ export class PickList {
         const chosen = pickWeightedFile(
             sorted,
             f => {
-                const eff = effectiveOverride(images, patterns, f);
-                const base = eff ? eff.weight : 10;
+                const base = effectiveOverride(images, patterns, f).weight;
                 if (base <= 0) { return 0; }
                 if (!antiSticky) { return base; }
                 const pickedAtSwitch = PickList.weightPickedAt.get(f);

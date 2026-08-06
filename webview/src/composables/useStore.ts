@@ -34,7 +34,7 @@ export interface StudioState {
     folderImagesTotal: number;
     pets: Array<{ value: string; label: string; desc: string; thumb: string }>;
     colorPalette: Array<{ name: string; rgb: string; hex: string }>;
-    imageConfigs: Array<{ name: string; display: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; opacity: number | undefined }>;
+    imageConfigs: Array<{ name: string; display: string; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; opacity: number | undefined }>;
     patterns: Array<{ pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; matchCount: number; opacity: number | undefined }>;
 }
 
