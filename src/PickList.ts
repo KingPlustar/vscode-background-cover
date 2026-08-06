@@ -1043,9 +1043,10 @@ export class PickList {
             console.warn('[BackgroundCover] Failed to load image overrides:', e);
         }
 
-        // Anti-sticky weights (configurable): when enabled, the picked image is
-        // excluded for one full round (eligible count of switches), then
-        // recovers 1/n of its base weight per round, n = max(2, total/10).
+        // Anti-sticky weights (configurable): when enabled, every eligible
+        // image is excluded for one full round, then recovers 1/n of its base
+        // weight per round. The round length uses the configured image count
+        // when any exist, otherwise all eligible images. n = max(2, ceil(total/10)).
         const folderKey = this.normalizePathKey(folder);
         if (PickList.weightStateFolder !== folderKey) {
             PickList.weightStateFolder = folderKey;
@@ -1058,8 +1059,11 @@ export class PickList {
             ? path.basename(PickList.lastAppliedPath)
             : undefined;
         const eligibleCount = sorted.filter(f => (weights.get(f) ?? 10) > 0).length;
-        const total = eligibleCount > 0 ? eligibleCount : sorted.length;
-        const n = Math.max(2, Math.floor(total / 10));
+        // Round length = configured images (weight > 0, still on disk); fall
+        // back to all eligible images when nothing is configured.
+        const configuredCount = sorted.filter(f => weights.has(f) && (weights.get(f) ?? 0) > 0).length;
+        const total = configuredCount > 0 ? configuredCount : (eligibleCount > 0 ? eligibleCount : sorted.length);
+        const n = Math.max(2, Math.ceil(total / 10));
         const chosen = pickWeightedFile(
             sorted,
             f => {
@@ -1070,7 +1074,7 @@ export class PickList {
                 const since = pickedAtSwitch === undefined
                     ? Number.MAX_SAFE_INTEGER
                     : currentCount - pickedAtSwitch;
-                const rounds = total > 0 ? Math.floor(since / total) : 0;
+                const rounds = total > 0 && since > 0 ? Math.floor((since - 1) / total) : 0;
                 const factor = Math.min(1, rounds / n);
                 return base * factor;
             },
