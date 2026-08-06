@@ -109,6 +109,7 @@ export default {
     followGlobalOpacity:  'Follow global opacity',
     followRule:           'Use rule/default',
     resetField:           'Reset',
+    followDefault:        'Use default',
     moreSettings:         'More Settings',
     onlineBackground:     'Online Background',
     realPreview:          'Real Preview',

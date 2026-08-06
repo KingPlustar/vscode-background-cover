@@ -140,7 +140,7 @@ export class StudioViewProvider implements WebviewViewProvider {
         const brandName: string = pkg.displayName || pkg.name || 'background-cover';
 
         let imageConfigs: { name: string; display: string; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; opacity: number | undefined }[] = [];
-        let patterns: { pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; matchCount: number; opacity: number | undefined }[] = [];
+        let patterns: { pattern: string; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; matchCount: number; opacity: number | undefined }[] = [];
         if (folder && fs.existsSync(folder) && fs.statSync(folder).isDirectory()) {
             try {
                 const data = await new ImageOverridesStore(folder).load();
@@ -410,9 +410,9 @@ export class StudioViewProvider implements WebviewViewProvider {
         try {
             await new ImageOverridesStore(folder).savePattern({
                 pattern,
-                weight: sanitizeNumber(msg.weight, 10, 0, 10000),
-                dwellBonusSeconds: sanitizeNumber(msg.dwellBonusSeconds, 0, -86400, 86400),
-                minDisplaySeconds: sanitizeNumber(msg.minDisplaySeconds, 0, 0, 86400),
+                weight: msg.weight,
+                dwellBonusSeconds: msg.dwellBonusSeconds,
+                minDisplaySeconds: msg.minDisplaySeconds,
                 opacity: sanitizeOpacityLike(msg.opacity)
             });
         } catch (e: any) {

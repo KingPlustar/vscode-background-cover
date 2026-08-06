@@ -109,6 +109,7 @@ export default {
     followGlobalOpacity:  '跟随全局透明度',
     followRule:           '跟随规则/默认',
     resetField:           '重置',
+    followDefault:        '跟随默认',
     moreSettings:         '更多设置',
     onlineBackground:     '在线背景',
     realPreview:          '临时真实预览',

@@ -282,6 +282,14 @@ suite("effectiveOverride", function () {
         assert.strictEqual(eff.minDisplaySeconds, 0);
     });
 
+    test("pattern fields fall through to defaults when unset", function () {
+        const pats = [{ pattern: '^miku-', weight: undefined, dwellBonusSeconds: undefined, minDisplaySeconds: undefined }];
+        const eff = effectiveOverride([], pats, 'miku-01.jpg');
+        assert.strictEqual(eff.weight, 10);
+        assert.strictEqual(eff.dwellBonusSeconds, 0);
+        assert.strictEqual(eff.minDisplaySeconds, 0);
+    });
+
     test("pattern weight 0 excludes like an explicit entry", function () {
         const pats = [{ pattern: 'b\\.png$', weight: 0, dwellBonusSeconds: 0, minDisplaySeconds: 0 }];
         const eff = effectiveOverride([], pats, 'b.png');

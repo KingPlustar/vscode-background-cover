@@ -176,9 +176,9 @@
                     <div class="image-config-info">
                         <span class="image-config-name pattern-text" :title="item.pattern">{{ item.pattern }}</span>
                         <span class="image-config-meta">
-                            {{ t('weight') }}: {{ item.weight }}
-                            · {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s
-                            · {{ t('minDisplay') }}: {{ item.minDisplaySeconds }}s
+                            <template v-if="item.weight !== undefined">{{ t('weight') }}: {{ item.weight }}</template>
+                            <template v-if="item.dwellBonusSeconds !== undefined"> · {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s</template>
+                            <template v-if="item.minDisplaySeconds !== undefined"> · {{ t('minDisplay') }}: {{ item.minDisplaySeconds }}s</template>
                             <span v-if="item.opacity !== undefined"> · {{ t('opacity') }}: {{ item.opacity }}</span>
                             · {{ t('patternMatchCount').replace('{n}', String(item.matchCount)) }}
                         </span>
@@ -232,15 +232,30 @@
                 </el-button>
                 <div v-if="patternPreviewTarget" class="field-hint preview-approx-hint">{{ t('previewApproxHint') }}</div>
                 <el-form-item :label="t('weight')">
-                    <el-input-number v-model="patternForm.weight" :min="0" :max="10000" :step="1" controls-position="right" class="dialog-input" />
+                    <div class="opacity-row">
+                        <el-input-number v-model="patternForm.weight" :min="0" :max="10000" :step="1" :placeholder="t('followDefault')" controls-position="right" class="dialog-input" />
+                        <el-button v-if="patternForm.weight !== undefined" link circle size="small" class="field-reset-btn" :title="t('resetField')" @click="resetPatternField('weight')">
+                            <el-icon><RefreshLeft /></el-icon>
+                        </el-button>
+                    </div>
                     <div class="field-hint">{{ t('weightHint') }}</div>
                 </el-form-item>
                 <el-form-item :label="t('dwellBonus')">
-                    <el-input-number v-model="patternForm.dwellBonusSeconds" :min="-86400" :max="86400" :step="1" controls-position="right" class="dialog-input" />
+                    <div class="opacity-row">
+                        <el-input-number v-model="patternForm.dwellBonusSeconds" :min="-86400" :max="86400" :step="1" :placeholder="t('followDefault')" controls-position="right" class="dialog-input" />
+                        <el-button v-if="patternForm.dwellBonusSeconds !== undefined" link circle size="small" class="field-reset-btn" :title="t('resetField')" @click="resetPatternField('dwell')">
+                            <el-icon><RefreshLeft /></el-icon>
+                        </el-button>
+                    </div>
                     <div class="field-hint">{{ t('dwellBonusHint') }}</div>
                 </el-form-item>
                 <el-form-item :label="t('minDisplay')">
-                    <el-input-number v-model="patternForm.minDisplaySeconds" :min="0" :max="86400" :step="1" controls-position="right" class="dialog-input" />
+                    <div class="opacity-row">
+                        <el-input-number v-model="patternForm.minDisplaySeconds" :min="0" :max="86400" :step="1" :placeholder="t('followDefault')" controls-position="right" class="dialog-input" />
+                        <el-button v-if="patternForm.minDisplaySeconds !== undefined" link circle size="small" class="field-reset-btn" :title="t('resetField')" @click="resetPatternField('minDisplay')">
+                            <el-icon><RefreshLeft /></el-icon>
+                        </el-button>
+                    </div>
                     <div class="field-hint">{{ t('minDisplayHint') }}</div>
                 </el-form-item>
                 <el-form-item :label="t('opacity')">
@@ -569,7 +584,13 @@ function removeConfig(item: { name: string }) {
 
 // --- Regex batch rules ---
 const patternDialogVisible = ref(false);
-const patternForm = reactive({ pattern: '', weight: 10, dwellBonusSeconds: 0, minDisplaySeconds: 0, opacity: 0.2 });
+const patternForm = reactive({
+    pattern: '',
+    weight: undefined as number | undefined,
+    dwellBonusSeconds: undefined as number | undefined,
+    minDisplaySeconds: undefined as number | undefined,
+    opacity: 0.2
+});
 const patternOpacityFollowed = ref(true);
 const patternPreviewTarget = ref('');
 
@@ -591,6 +612,11 @@ function resetPatternOpacity() {
     patternOpacityFollowed.value = true;
     patternForm.opacity = Number(config.opacity ?? 0.2);
 }
+function resetPatternField(key: 'weight' | 'dwell' | 'minDisplay') {
+    if (key === 'weight') { patternForm.weight = undefined; }
+    else if (key === 'dwell') { patternForm.dwellBonusSeconds = undefined; }
+    else { patternForm.minDisplaySeconds = undefined; }
+}
 const patternPreviewText = ref('');
 const patternPreviewCount = ref(0);
 const patternPreviewFiles = ref<{ name: string; display: string }[]>([]);
@@ -598,9 +624,9 @@ let patternPreviewTimer: number | undefined;
 
 function openPatternAdd() {
     patternForm.pattern = '';
-    patternForm.weight = 10;
-    patternForm.dwellBonusSeconds = 0;
-    patternForm.minDisplaySeconds = 0;
+    patternForm.weight = undefined;
+    patternForm.dwellBonusSeconds = undefined;
+    patternForm.minDisplaySeconds = undefined;
     patternOpacityFollowed.value = true;
     patternForm.opacity = Number(config.opacity ?? 0.2);
     patternPreviewText.value = '';
@@ -610,7 +636,7 @@ function openPatternAdd() {
     patternDialogVisible.value = true;
 }
 
-function openPatternEdit(item: { pattern: string; weight: number; dwellBonusSeconds: number; minDisplaySeconds: number; opacity: number | undefined }) {
+function openPatternEdit(item: { pattern: string; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; opacity: number | undefined }) {
     patternForm.pattern = item.pattern;
     patternForm.weight = item.weight;
     patternForm.dwellBonusSeconds = item.dwellBonusSeconds;

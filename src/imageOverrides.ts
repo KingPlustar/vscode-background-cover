@@ -28,12 +28,12 @@ export interface ImageOverride {
 export interface ImagePattern {
     /** JavaScript regular expression matched against file basenames. */
     pattern: string;
-    /** 0..100, 0 = excluded from random rotation. */
-    weight: number;
-    /** Seconds added to the base interval (may be negative). */
-    dwellBonusSeconds: number;
-    /** Floor for the display time in seconds (>= 0). */
-    minDisplaySeconds: number;
+    /** 0..100, 0 = excluded; undefined falls through to default. */
+    weight?: number;
+    /** Seconds added to the base interval (may be negative); undefined falls through. */
+    dwellBonusSeconds?: number;
+    /** Floor for the display time in seconds (>= 0); undefined falls through. */
+    minDisplaySeconds?: number;
     /** Optional opacity (0-0.8); undefined follows the global opacity. */
     opacity?: number;
 }
@@ -124,9 +124,9 @@ function toPattern(raw: unknown): ImagePattern | null {
     if (typeof o.pattern !== 'string' || !o.pattern.trim()) { return null; }
     const pattern = o.pattern;
     try { new RegExp(pattern); } catch { return null; }
-    const weight = Math.round(sanitizeNumber(o.weight, DEFAULT_WEIGHT, 0, 10000));
-    const dwellBonusSeconds = sanitizeNumber(o.dwellBonusSeconds, 0, -86400, 86400);
-    const minDisplaySeconds = sanitizeNumber(o.minDisplaySeconds, 0, 0, 86400);
+    const weight = sanitizeWeight(o.weight);
+    const dwellBonusSeconds = sanitizeDwellBonus(o.dwellBonusSeconds);
+    const minDisplaySeconds = sanitizeMinDisplay(o.minDisplaySeconds);
     const opacity = sanitizeOpacity(o.opacity);
     return { pattern, weight, dwellBonusSeconds, minDisplaySeconds, opacity };
 }
@@ -148,10 +148,10 @@ export function effectiveOverride(
     for (const p of patterns) {
         try {
             if (new RegExp(p.pattern).test(base)) {
-                weight = p.weight;
-                dwellBonusSeconds = p.dwellBonusSeconds;
-                minDisplaySeconds = p.minDisplaySeconds;
-                opacity = p.opacity;
+                if (p.weight !== undefined) { weight = p.weight; }
+                if (p.dwellBonusSeconds !== undefined) { dwellBonusSeconds = p.dwellBonusSeconds; }
+                if (p.minDisplaySeconds !== undefined) { minDisplaySeconds = p.minDisplaySeconds; }
+                if (p.opacity !== undefined) { opacity = p.opacity; }
                 break;
             }
         } catch { /* invalid pattern skipped at load */ }
@@ -234,9 +234,9 @@ export class ImageOverridesStore {
     public savePattern(pattern: ImagePattern): Promise<ImagePattern> {
         const entry: ImagePattern = {
             pattern: pattern.pattern,
-            weight: Math.round(sanitizeNumber(pattern.weight, DEFAULT_WEIGHT, 0, 10000)),
-            dwellBonusSeconds: sanitizeNumber(pattern.dwellBonusSeconds, 0, -86400, 86400),
-            minDisplaySeconds: sanitizeNumber(pattern.minDisplaySeconds, 0, 0, 86400),
+            weight: sanitizeWeight(pattern.weight),
+            dwellBonusSeconds: sanitizeDwellBonus(pattern.dwellBonusSeconds),
+            minDisplaySeconds: sanitizeMinDisplay(pattern.minDisplaySeconds),
             opacity: sanitizeOpacity(pattern.opacity)
         };
         try { new RegExp(entry.pattern); } catch { throw new Error(`invalid regex: ${entry.pattern}`); }
