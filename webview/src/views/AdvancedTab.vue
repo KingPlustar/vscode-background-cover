@@ -227,6 +227,7 @@
                 <el-button v-if="patternPreviewTarget" link type="primary" size="small" class="real-preview-btn" @click="realPreviewPattern">
                     <el-icon><View /></el-icon>
                     {{ t('realPreview') }}
+                    <el-icon><View /></el-icon>
                 </el-button>
                 <div v-if="patternPreviewTarget" class="field-hint preview-approx-hint">{{ t('previewApproxHint') }}</div>
                 <el-form-item :label="t('weight')">
@@ -281,6 +282,7 @@
                 <el-button v-if="editingDisplay" link type="primary" size="small" class="real-preview-btn" @click="realPreviewImage">
                     <el-icon><View /></el-icon>
                     {{ t('realPreview') }}
+                    <el-icon><View /></el-icon>
                 </el-button>
                 <div v-if="editingDisplay" class="field-hint preview-approx-hint">{{ t('previewApproxHint') }}</div>
                 <div class="dialog-file">{{ editingName }}</div>
