@@ -175,9 +175,9 @@
                         <span class="image-config-name pattern-text" :title="item.pattern">{{ item.pattern }}</span>
                         <span class="image-config-meta">
                             {{ t('weight') }}: {{ item.weight }}
-                            ? {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s
-                            ? {{ t('minDisplay') }}: {{ item.minDisplaySeconds }}s
-                            ? {{ t('patternMatchCount').replace('{n}', String(item.matchCount)) }}
+                            · {{ t('dwellBonus') }}: {{ item.dwellBonusSeconds }}s
+                            · {{ t('minDisplay') }}: {{ item.minDisplaySeconds }}s
+                            · {{ t('patternMatchCount').replace('{n}', String(item.matchCount)) }}
                         </span>
                     </div>
                     <div class="image-config-actions">
