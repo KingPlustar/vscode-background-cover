@@ -185,6 +185,7 @@ export class StudioViewProvider implements WebviewViewProvider {
                     playMode: cfg.get('playMode') ?? 'random',
                     triggerMode: cfg.get('triggerMode') ?? 'timer',
                     antiSticky: cfg.get('antiSticky') ?? true,
+                    onlineBackground: cfg.get('onlineBackground') ?? true,
                     antiStickyLevel: cfg.get('antiStickyLevel') ?? 2,
                     sizeModel: cfg.get('sizeModel') ?? 'cover',
                     blendModel: cfg.get('blendModel') ?? 'auto',

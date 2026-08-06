@@ -152,6 +152,11 @@
                     "default": 2,
                     "description": "Anti-sticky intensity (1-10): switches an image stays excluded after being picked, and rounds to fully recover / 防重复力度（1-10）：图片被选中后排除的切换数及恢复所需的轮数"
                 },
+                "backgroundCover.onlineBackground": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Show the Online tab in the Studio navigation / 是否在导航栏显示在线页面"
+                },
                 "backgroundCover.sizeModel": {
                     "type": "string",
                     "enum": [

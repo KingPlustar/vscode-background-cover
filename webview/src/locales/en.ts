@@ -109,6 +109,8 @@ export default {
     followGlobalOpacity:  'Follow global opacity',
     followRule:           'Use rule/default',
     resetField:           'Reset',
+    moreSettings:         'More Settings',
+    onlineBackground:     'Online Background',
     realPreview:          'Real Preview',
     previewApproxHint:    'Thumbnails do not show the opacity effect; use "Real Preview" for the exact result.',
     applyChanges:         'Reload to apply changes',

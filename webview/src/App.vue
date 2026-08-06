@@ -89,7 +89,7 @@ import DecorationTab from './views/DecorationTab.vue';
 import { useTheme } from './composables/useTheme';
 import { useBridge } from './composables/useBridge';
 import { useI18n, setLocale, type Locale } from './composables/useI18n';
-import { applyState, brand } from './composables/useStore';
+import { applyState, brand, config } from './composables/useStore';
 
 const { t, locale } = useI18n();
 const bridge = useBridge();
@@ -121,13 +121,16 @@ function onLangChange(value: Locale) {
     bridge.post({ type: 'setGlobalState', key: 'backgroundCoverLocale', value });
 }
 
-const tabs = computed(() => [
-    { key: 'home',       label: t('tabHome'),       icon: House },
-    { key: 'local',      label: t('tabLocal'),      icon: Folder },
-    { key: 'online',     label: t('tabOnline'),     icon: Promotion },
-    { key: 'advanced',   label: t('tabAdvanced'),   icon: Setting },
-    { key: 'decoration', label: t('tabDecoration'), icon: MagicStick }
-]);
+const tabs = computed(() => {
+    const list = [
+        { key: 'home',       label: t('tabHome'),       icon: House },
+        { key: 'local',      label: t('tabLocal'),      icon: Folder },
+        { key: 'online',     label: t('tabOnline'),     icon: Promotion },
+        { key: 'advanced',   label: t('tabAdvanced'),   icon: Setting },
+        { key: 'decoration', label: t('tabDecoration'), icon: MagicStick }
+    ];
+    return config.onlineBackground === false ? list.filter(x => x.key !== 'online') : list;
+});
 
 const views: Record<string, any> = {
     home: HomeTab,
@@ -149,6 +152,12 @@ const active = ref(initialTab);
 
 watch(active, (value) => {
     try { localStorage.setItem('bgc.activeTab', value); } catch { /* noop */ }
+});
+
+watch(() => config.onlineBackground, (v) => {
+    if (v === false && active.value === 'online') {
+        active.value = 'home';
+    }
 });
 
 bridge.on('state', (data: any) => {

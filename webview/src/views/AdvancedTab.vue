@@ -268,6 +268,23 @@
             </template>
         </el-dialog>
 
+        <!-- More settings -->
+        <el-card class="card" shadow="never">
+            <template #header>
+                <span class="card-title">
+                    <el-icon><MoreFilled /></el-icon>
+                    {{ t('moreSettings') }}
+                </span>
+            </template>
+            <div class="row">
+                <span class="row-label">{{ t('onlineBackground') }}</span>
+                <el-switch
+                    :model-value="!!config.onlineBackground"
+                    @change="(v: any) => bridge.post({ type: 'setConfig', key: 'onlineBackground', value: v })"
+                />
+            </div>
+        </el-card>
+
         <!-- Config dialog -->
         <el-dialog
             v-model="dialogVisible"
@@ -396,7 +413,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture, Filter, View, RefreshLeft } from '@element-plus/icons-vue';
+import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture, Filter, View, RefreshLeft, MoreFilled } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 import { useI18n } from '../composables/useI18n';
 import { useBridge } from '../composables/useBridge';
