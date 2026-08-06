@@ -246,15 +246,19 @@
                     <div class="opacity-row">
                         <el-switch v-model="patternForm.followGlobalOpacity" size="small" />
                         <span class="opacity-follow-label">{{ t('followGlobalOpacity') }}</span>
+                    </div>
+                    <div class="opacity-row opacity-slider-row">
                         <el-slider
-                            v-model="patternForm.opacity"
+                            v-model="patternOpacityPct"
                             :min="0"
-                            :max="0.8"
-                            :step="0.05"
+                            :max="80"
+                            :step="1"
                             :disabled="patternForm.followGlobalOpacity"
+                            :format-tooltip="formatOpacityTooltip"
                             class="opacity-slider"
+                            @change="onPatternOpacityPctChange"
                         />
-                        <span class="level-value">{{ patternPreviewOpacity.toFixed(2) }}</span>
+                        <span class="level-value">{{ (patternOpacityPct / 100).toFixed(2) }}</span>
                     </div>
                 </el-form-item>
             </el-form>
@@ -302,15 +306,19 @@
                     <div class="opacity-row">
                         <el-switch v-model="form.followGlobalOpacity" size="small" />
                         <span class="opacity-follow-label">{{ t('followGlobalOpacity') }}</span>
+                    </div>
+                    <div class="opacity-row opacity-slider-row">
                         <el-slider
-                            v-model="form.opacity"
+                            v-model="opacityPct"
                             :min="0"
-                            :max="0.8"
-                            :step="0.05"
+                            :max="80"
+                            :step="1"
                             :disabled="form.followGlobalOpacity"
+                            :format-tooltip="formatOpacityTooltip"
                             class="opacity-slider"
+                            @change="onOpacityPctChange"
                         />
-                        <span class="level-value">{{ dialogPreviewOpacity.toFixed(2) }}</span>
+                        <span class="level-value">{{ (opacityPct / 100).toFixed(2) }}</span>
                     </div>
                 </el-form-item>
             </el-form>
@@ -423,6 +431,19 @@ const dialogPreviewOpacity = computed(() => {
     return form.followGlobalOpacity ? globalOpacity : Number(form.opacity ?? globalOpacity);
 });
 
+const opacityPct = ref<number>(Math.round(Number(config.opacity ?? 0.2) * 100));
+watch([() => form.followGlobalOpacity, () => form.opacity, () => config.opacity], () => {
+    const eff = form.followGlobalOpacity ? Number(config.opacity ?? 0.2) : Number(form.opacity ?? 0.2);
+    opacityPct.value = Math.round(eff * 100);
+}, { immediate: true });
+function formatOpacityTooltip(v: number): string {
+    return (v / 100).toFixed(2);
+}
+
+function onOpacityPctChange(v: number | undefined) {
+    form.opacity = Number(((v ?? 0) / 100).toFixed(2));
+}
+
 
 function addConfig() {
     bridge.post({ type: 'pickImageForConfig' });
@@ -513,6 +534,15 @@ const patternPreviewOpacity = computed(() => {
     const globalOpacity = Number(config.opacity ?? 0.2);
     return patternForm.followGlobalOpacity ? globalOpacity : Number(patternForm.opacity ?? globalOpacity);
 });
+
+const patternOpacityPct = ref<number>(Math.round(Number(config.opacity ?? 0.2) * 100));
+watch([() => patternForm.followGlobalOpacity, () => patternForm.opacity, () => config.opacity], () => {
+    const eff = patternForm.followGlobalOpacity ? Number(config.opacity ?? 0.2) : Number(patternForm.opacity ?? 0.2);
+    patternOpacityPct.value = Math.round(eff * 100);
+}, { immediate: true });
+function onPatternOpacityPctChange(v: number | undefined) {
+    patternForm.opacity = Number(((v ?? 0) / 100).toFixed(2));
+}
 const patternPreviewText = ref('');
 const patternPreviewCount = ref(0);
 const patternPreviewFiles = ref<{ name: string; display: string }[]>([]);
@@ -859,6 +889,8 @@ function removePattern(item: { pattern: string }) {
     gap: 8px;
     width: 100%;
 }
+
+.opacity-slider-row { margin-top: 6px; }
 
 .opacity-follow-label {
     font-size: 11px;
