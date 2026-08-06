@@ -108,7 +108,7 @@ export default {
     patternCancel:        '取消',
     followGlobalOpacity:  '跟随全局透明度',
     realPreview:          '临时真实预览',
-    previewApproxHint:    '弹窗内为近似预览；请用“临时真实预览”查看真实效果',
+    previewApproxHint:    '缩略图不叠加透明度效果；请用“临时真实预览”查看真实效果',
     applyChanges:         '重启窗口生效',
     applyChangesHint:     '本部分功能修改后需重启窗口才能生效，修改完成后请点击下方按钮'
 };

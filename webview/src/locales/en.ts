@@ -108,7 +108,7 @@ export default {
     patternCancel:        'Cancel',
     followGlobalOpacity:  'Follow global opacity',
     realPreview:          'Real Preview',
-    previewApproxHint:    'Dialog preview is approximate; use "Real Preview" for the exact effect',
+    previewApproxHint:    'Thumbnails do not show the opacity effect; use "Real Preview" for the exact result.',
     applyChanges:         'Reload to apply changes',
     applyChangesHint:     'Changes in this section require a window reload. Click the button below after editing.'
 };

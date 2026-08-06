@@ -215,9 +215,9 @@
                 </el-form-item>
                 <div v-if="patternPreviewText" class="field-hint pattern-preview-text">{{ patternPreviewText }}</div>
                 <div v-if="patternPreviewFiles.length" class="pattern-preview-list">
-                    <div v-for="file in patternPreviewFiles" :key="file.name" class="pattern-preview-item" :class="{ 'is-selected': file.name === patternPreviewTarget }" :title="file.name" :style="{ background: previewBackdrop }" @click="patternPreviewTarget = file.name">
-                        <video v-if="isVideoPath(file.name)" :src="file.display" muted loop playsinline preload="metadata" :style="{ opacity: patternPreviewOpacity }" />
-                        <img v-else-if="file.display" :src="file.display" :alt="file.name" :style="{ opacity: patternPreviewOpacity }" />
+                    <div v-for="file in patternPreviewFiles" :key="file.name" class="pattern-preview-item" :class="{ 'is-selected': file.name === patternPreviewTarget }" :title="file.name" @click="patternPreviewTarget = file.name">
+                        <video v-if="isVideoPath(file.name)" :src="file.display" muted loop playsinline preload="metadata" />
+                        <img v-else-if="file.display" :src="file.display" :alt="file.name" />
                         <div v-else class="dialog-preview-fallback">
                             <el-icon><Picture /></el-icon>
                         </div>
@@ -272,9 +272,9 @@
             append-to-body
         >
             <el-form label-position="top" size="small">
-                <div class="dialog-preview" :style="{ background: previewBackdrop }">
-                    <video v-if="editingDisplay && isVideoPath(editingName)" :src="editingDisplay" muted loop playsinline preload="metadata" :style="{ opacity: dialogPreviewOpacity }" />
-                    <img v-else-if="editingDisplay" :src="editingDisplay" :alt="editingName" :style="{ opacity: dialogPreviewOpacity }" />
+                <div class="dialog-preview">
+                    <video v-if="editingDisplay && isVideoPath(editingName)" :src="editingDisplay" muted loop playsinline preload="metadata" />
+                    <img v-else-if="editingDisplay" :src="editingDisplay" :alt="editingName" />
                     <div v-else class="dialog-preview-fallback">
                         <el-icon><Picture /></el-icon>
                     </div>
@@ -423,26 +423,6 @@ const dialogPreviewOpacity = computed(() => {
     return form.followGlobalOpacity ? globalOpacity : Number(form.opacity ?? globalOpacity);
 });
 
-function isOpaqueColor(c: string): boolean {
-    if (!c || c === 'transparent') { return false; }
-    const m = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/.exec(c);
-    if (!m) { return false; }
-    const alpha = m[4] === undefined ? 1 : parseFloat(m[4]);
-    return alpha >= 1;
-}
-
-function getThemeBackdropColor(): string {
-    try {
-        const probe = document.createElement('div');
-        probe.style.cssText = 'position:absolute;visibility:hidden;left:-9999px;background:var(--vscode-editor-background, var(--vscode-sideBar-background, #1e1e1e));';
-        document.body.appendChild(probe);
-        const c = getComputedStyle(probe).backgroundColor;
-        probe.remove();
-        if (isOpaqueColor(c)) { return c; }
-    } catch { /* fall through */ }
-    return '#1e1e1e';
-}
-const previewBackdrop = getThemeBackdropColor();
 
 function addConfig() {
     bridge.post({ type: 'pickImageForConfig' });
@@ -490,6 +470,11 @@ let realPreviewSyncTimer: number | undefined;
 
 function realPreviewImage() {
     if (!editingName.value) { return; }
+    if (realPreviewActive.value) {
+        realPreviewActive.value = false;
+        bridge.post({ type: 'revertRealPreview' });
+        return;
+    }
     realPreviewActive.value = true;
     bridge.post({ type: 'applyRealPreview', name: editingName.value, opacity: dialogPreviewOpacity.value });
 }
@@ -603,6 +588,11 @@ function savePattern() {
 
 function realPreviewPattern() {
     if (!patternPreviewTarget.value) { return; }
+    if (realPreviewActive.value) {
+        realPreviewActive.value = false;
+        bridge.post({ type: 'revertRealPreview' });
+        return;
+    }
     realPreviewActive.value = true;
     bridge.post({ type: 'applyRealPreview', name: patternPreviewTarget.value, opacity: patternPreviewOpacity.value });
 }
@@ -769,7 +759,7 @@ function removePattern(item: { pattern: string }) {
     border-radius: 6px;
     overflow: hidden;
     margin-bottom: 8px;
-    background: var(--vscode-editor-background, #000);
+    background: #000;
     border: 1px solid rgba(120, 140, 200, 0.18);
     img, video {
         width: 100%;
@@ -848,7 +838,7 @@ function removePattern(item: { pattern: string }) {
     width: 90px;
     border-radius: 6px;
     overflow: hidden;
-    background: var(--vscode-editor-background, #000);
+    background: #000;
     border: 1px solid rgba(120, 140, 200, 0.18);
     cursor: pointer;
     img, video {
