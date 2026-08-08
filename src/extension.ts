@@ -160,7 +160,14 @@ export function activate(context: ExtensionContext) {
 		// handled by the config-change listener; re-rendering here would snap the
 		// background back to the stale persisted single image.
 		const newConfig = workspace.getConfiguration('backgroundCover');
-		if (key === 'backgroundCover.imagePath') {
+		if (key === 'backgroundCover.autoStatus') {
+			// Enabling rotates immediately; disabling reverts to the local selection.
+			if (value === true) {
+				await PickList.randomUpdateBackground();
+			} else {
+				PickList.needAutoUpdate(newConfig, true);
+			}
+		} else if (key === 'backgroundCover.imagePath') {
 			PickList.needAutoUpdate(newConfig, true);
 		} else if (['backgroundCover.opacity', 'backgroundCover.blur', 'backgroundCover.sizeModel', 'backgroundCover.blendModel'].includes(key)) {
 			PickList.needAutoUpdate(newConfig, false);
