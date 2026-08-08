@@ -62,7 +62,7 @@ export default {
     folderLibraryMore:    'Showing first {shown} of {n} items',
     presetColors:         'Preset Colors',
     customColor:          'Custom Color',
-    intervalSeconds:      'Interval (seconds)',
+    intervalSeconds:      'Interval',
     playOrder:            'Play Order',
     playRandom:           'Random',
     playSequence:         'Sequence',

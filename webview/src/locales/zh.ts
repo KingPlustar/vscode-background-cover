@@ -62,7 +62,7 @@ export default {
     folderLibraryMore:    '共 {n} 项，已显示前 {shown} 项',
     presetColors:         '预设颜色',
     customColor:          '自定义颜色',
-    intervalSeconds:      '间隔（秒）',
+    intervalSeconds:      '间隔',
     playOrder:            '播放顺序',
     playRandom:           '随机',
     playSequence:         '顺序',
