@@ -320,14 +320,23 @@ export class PickList {
         PickList.nextChangeAt = 0;
     }
 
-    private static realPreviewState: { prevPath: string; prevOpacity: number } | undefined;
+    private static realPreviewState: { prevPath: string; prevOpacity: number; resumeTimer: boolean } | undefined;
 
-    /** Temporarily apply a real background with a given opacity (not persisted). */
+    /**
+     * Temporarily apply a real background with a given opacity (not persisted).
+     * The pre-preview state uses the actually displayed image (lastAppliedPath,
+     * which auto ticks keep current even though config.imagePath is stale), and
+     * the auto timer is paused while the preview is active.
+     */
     public static async applyRealPreview(path: string, opacity: number): Promise<void> {
         const config = workspace.getConfiguration('backgroundCover');
-        const prevPath = config.get<string>('imagePath') || '';
-        const prevOpacity = config.get<number>('opacity', 0.2);
-        PickList.realPreviewState = { prevPath, prevOpacity };
+        const prevPath = PickList.lastAppliedPath || config.get<string>('imagePath') || '';
+        const prevOpacity = await PickList.effectiveOpacityForPath(prevPath);
+        const resumeTimer = PickList.timerHandle !== undefined;
+        if (resumeTimer) {
+            PickList.stopAutoRandomTask();
+        }
+        PickList.realPreviewState = { prevPath, prevOpacity, resumeTimer };
         const pl = new PickList(config);
         pl.opacity = Math.min(0.8, Math.max(0, opacity));
         pl.imgPath = path;
@@ -338,7 +347,7 @@ export class PickList {
         }
     }
 
-    /** Restore the background and opacity that were active before a temporary preview. */
+    /** Restore the background/opacity active before a temporary preview and resume rotation. */
     public static async revertRealPreview(): Promise<void> {
         const state = PickList.realPreviewState;
         PickList.realPreviewState = undefined;
@@ -350,11 +359,31 @@ export class PickList {
             if (state.prevPath) {
                 pl.imgPath = state.prevPath;
                 await pl.updateDom(false, BlendHelper.autoBlendModel() as string);
+                PickList.lastAppliedPath = state.prevPath;
             } else {
                 await pl.updateDom(true);
             }
         } finally {
             PickList.itemList = undefined;
+        }
+        if (state.resumeTimer) {
+            await PickList.scheduleNextAutoUpdate(state.prevPath || undefined);
+        }
+    }
+
+    /** Effective opacity for a path (explicit > pattern > global); static for preview use. */
+    private static async effectiveOpacityForPath(path?: string): Promise<number> {
+        const config = workspace.getConfiguration('backgroundCover');
+        const globalOpacity = config.get<number>('opacity', 0.2);
+        if (!path || /^https?:\/\//i.test(path)) { return globalOpacity; }
+        const folder = config.get<string>('randomImageFolder') || '';
+        if (!folder || !isPathInside(folder, path)) { return globalOpacity; }
+        try {
+            const data = await new ImageOverridesStore(folder).load();
+            const eff = effectiveOverride(data.images, data.patterns, path);
+            return eff.opacity !== undefined ? eff.opacity : globalOpacity;
+        } catch {
+            return globalOpacity;
         }
     }
 
