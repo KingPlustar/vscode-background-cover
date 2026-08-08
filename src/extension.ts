@@ -155,9 +155,16 @@ export function activate(context: ExtensionContext) {
 	context.subscriptions.push(commands.registerCommand('backgroundCover.setConfig', async (key: string, value: any) => {
 		const config = workspace.getConfiguration();
 		await config.update(key, value, true);
-		// Trigger update
+		// Only re-render the background for keys that affect the rendered image.
+		// Rotation parameters (interval, play order, trigger, anti-sticky...) are
+		// handled by the config-change listener; re-rendering here would snap the
+		// background back to the stale persisted single image.
 		const newConfig = workspace.getConfiguration('backgroundCover');
-		PickList.needAutoUpdate(newConfig);
+		if (key === 'backgroundCover.imagePath') {
+			PickList.needAutoUpdate(newConfig, true);
+		} else if (['backgroundCover.opacity', 'backgroundCover.blur', 'backgroundCover.sizeModel', 'backgroundCover.blendModel'].includes(key)) {
+			PickList.needAutoUpdate(newConfig, false);
+		}
 	}));
 
 	// Initialize context

@@ -215,11 +215,20 @@ export class PickList {
         PickList.itemList.showMainMenu();
     }
 
-    public static needAutoUpdate(config: WorkspaceConfiguration) {
+    public static needAutoUpdate(config: WorkspaceConfiguration, fromImagePathChange: boolean = false) {
         if (config.imagePath == '') { return; }
 
         const nowBlenaStr = BlendHelper.autoBlendModel();
         PickList.itemList = new PickList(config);
+        // Re-render what is actually displayed: rotation keeps config.imagePath
+        // stale (ticks persist=false), so render lastAppliedPath unless the user
+        // explicitly selected a new image just now.
+        if (fromImagePathChange) {
+            PickList.lastAppliedPath = config.imagePath;
+        } else {
+            const current = PickList.lastAppliedPath || config.imagePath;
+            if (current) { PickList.itemList.imgPath = current; }
+        }
         PickList.itemList.updateDom(false, nowBlenaStr as string).then((requiresReload) => {
             if (requiresReload) {
                 // Avoid auto-reloading: the Studio "Reload to apply" button in
@@ -264,7 +273,7 @@ export class PickList {
             return undefined;
         }
         PickList.itemList = new PickList(config);
-        const applied = await PickList.itemList.autoUpdateBackground();
+        const applied = await PickList.itemList.autoUpdateBackground(false);
         PickList.itemList = undefined;
         await PickList.scheduleNextAutoUpdate(applied);
         return applied;
@@ -279,7 +288,7 @@ export class PickList {
         PickList.itemList = new PickList(config);
         PickList.itemList.setRandUpdate(true);
         PickList.itemList.setSkipOnlineCache(true);
-        const applied = await PickList.itemList.autoUpdateBackground();
+        const applied = await PickList.itemList.autoUpdateBackground(false);
         PickList.itemList = undefined;
         await PickList.scheduleNextAutoUpdate(applied);
         return !!applied;
