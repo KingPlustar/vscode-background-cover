@@ -103,7 +103,7 @@
         </el-card>
 
         <!-- Per-image rotation settings -->
-        <el-card v-if="config.randomImageFolder" class="card" shadow="never">
+        <el-card v-if="config.randomImageFolder && config.autoStatus" class="card" shadow="never">
             <template #header>
                 <span class="card-title">
                     <el-icon><Picture /></el-icon>
@@ -157,7 +157,7 @@
         </el-card>
 
         <!-- Regex batch rules -->
-        <el-card v-if="config.randomImageFolder" class="card" shadow="never">
+        <el-card v-if="config.randomImageFolder && config.autoStatus" class="card" shadow="never">
             <template #header>
                 <span class="card-title">
                     <el-icon><Filter /></el-icon>
