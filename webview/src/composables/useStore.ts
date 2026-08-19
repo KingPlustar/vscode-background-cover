@@ -17,6 +17,7 @@ export interface StudioConfig {
     antiSticky: boolean;
     antiStickyLevel: number;
     onlineBackground: boolean;
+    applyImageConfigs: boolean;
     sizeModel: string;
     blendModel: string;
     randomImageFolder: string;
@@ -54,6 +55,7 @@ export const config = reactive<StudioConfig>({
     antiSticky: true,
     antiStickyLevel: 2,
     onlineBackground: true,
+    applyImageConfigs: true,
     sizeModel: 'cover',
     blendModel: 'auto',
     randomImageFolder: '',

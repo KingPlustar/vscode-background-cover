@@ -193,6 +193,7 @@ export class StudioViewProvider implements WebviewViewProvider {
                     antiSticky: cfg.get('antiSticky') ?? true,
                     onlineBackground: cfg.get('onlineBackground') ?? true,
                     antiStickyLevel: cfg.get('antiStickyLevel') ?? 2,
+                    applyImageConfigs: cfg.get('applyImageConfigs') ?? true,
                     sizeModel: cfg.get('sizeModel') ?? 'cover',
                     blendModel: cfg.get('blendModel') ?? 'auto',
                     randomImageFolder: cfg.get('randomImageFolder') ?? '',

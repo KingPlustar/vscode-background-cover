@@ -26,6 +26,15 @@
             </div>
             <div v-if="config.playMode === 'random'" class="anti-sticky-hint">{{ t('antiStickyHint') }}</div>
 
+            <div class="row">
+                <span class="row-label">{{ t('applyImageConfigs') }}</span>
+                <el-switch
+                    :model-value="config.applyImageConfigs !== false"
+                    @change="(v: any) => bridge.post({ type: 'setConfig', key: 'applyImageConfigs', value: v })"
+                />
+            </div>
+            <div class="anti-sticky-hint">{{ t('applyImageConfigsHint') }}</div>
+
             <div v-if="config.playMode === 'random' && config.antiSticky" class="row">
                 <span class="row-label">{{ t('antiStickyLevel') }}</span>
                 <div class="level-group">
@@ -103,7 +112,7 @@
         </el-card>
 
         <!-- Per-image rotation settings -->
-        <el-card v-if="config.randomImageFolder && config.autoStatus" class="card" shadow="never">
+        <el-card v-if="config.randomImageFolder && config.autoStatus && config.applyImageConfigs !== false" class="card" shadow="never">
             <template #header>
                 <span class="card-title">
                     <el-icon><Picture /></el-icon>
@@ -157,7 +166,7 @@
         </el-card>
 
         <!-- Regex batch rules -->
-        <el-card v-if="config.randomImageFolder && config.autoStatus" class="card" shadow="never">
+        <el-card v-if="config.randomImageFolder && config.autoStatus && config.applyImageConfigs !== false" class="card" shadow="never">
             <template #header>
                 <span class="card-title">
                     <el-icon><Filter /></el-icon>

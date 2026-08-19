@@ -102,6 +102,8 @@ export default {
     antiStickyHint:       'When enabled, recently shown images get temporarily reduced weight and never appear twice in a row; when disabled, picks are pure weighted random (repeats allowed).',
     antiStickyLevel:      'Intensity',
     antiStickyLevelHint:  '1 = no adjacent repeats; higher values exclude longer and recover slower',
+    applyImageConfigs:    'Custom Image Configs',
+    applyImageConfigsHint: 'Apply per-image / regex rules (weight, dwell time, min display, opacity). Off: every image uses the default weight and the global opacity.',
     patternRules:         'Regex Rules',
     patternRulesEmpty:    'No regex rules yet. Add one to batch-configure a group of images.',
     patternAdd:           'Add Rule',

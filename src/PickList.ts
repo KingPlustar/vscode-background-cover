@@ -405,6 +405,7 @@ export class PickList {
     private static async effectiveOpacityForPath(path?: string): Promise<number> {
         const config = workspace.getConfiguration('backgroundCover');
         const globalOpacity = config.get<number>('opacity', 0.2);
+        if (config.get<boolean>('applyImageConfigs', true) === false) { return globalOpacity; }
         if (!path || /^https?:\/\//i.test(path)) { return globalOpacity; }
         const folder = config.get<string>('randomImageFolder') || '';
         if (!folder || !isPathInside(folder, path)) { return globalOpacity; }
@@ -436,7 +437,8 @@ export class PickList {
 
         let dwellMs = baseMs;
         const imagePath = afterImagePath || cfg.get<string>('imagePath') || '';
-        if (unit === 'seconds' && imagePath && !/^https?:\/\//i.test(imagePath)) {
+        const applyConfigs = cfg.get<boolean>('applyImageConfigs', true) !== false;
+        if (unit === 'seconds' && imagePath && !/^https?:\/\//i.test(imagePath) && applyConfigs) {
             const folder = cfg.get<string>('randomImageFolder') || '';
             if (folder && isPathInside(folder, imagePath)) {
                 try {
@@ -997,6 +999,7 @@ export class PickList {
     /** Effective opacity for a file: explicit > pattern > global. */
     private async effectiveOpacityFor(path?: string): Promise<number> {
         const globalOpacity = this.config.get<number>('opacity', 0.2);
+        if (this.config.get<boolean>('applyImageConfigs', true) === false) { return globalOpacity; }
         if (!path || this.isOnlineUrl(path)) { return globalOpacity; }
         const folder = this.config.get<string>('randomImageFolder') || '';
         if (!folder || !isPathInside(folder, path)) { return globalOpacity; }
@@ -1206,12 +1209,16 @@ export class PickList {
 
         let images: ImageOverride[] = [];
         let patterns: ImagePattern[] = [];
-        try {
-            const data = await new ImageOverridesStore(folder).load();
-            images = data.images;
-            patterns = data.patterns;
-        } catch (e) {
-            console.warn('[BackgroundCover] Failed to load image overrides:', e);
+        // When custom image configs are disabled, skip loading overrides so all
+        // files use the default weight and no dwell/opacity rules apply.
+        if (this.config.get<boolean>('applyImageConfigs', true) !== false) {
+            try {
+                const data = await new ImageOverridesStore(folder).load();
+                images = data.images;
+                patterns = data.patterns;
+            } catch (e) {
+                console.warn('[BackgroundCover] Failed to load image overrides:', e);
+            }
         }
 
         // Anti-sticky weights (configurable): when enabled, every eligible

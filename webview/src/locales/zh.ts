@@ -102,6 +102,8 @@ export default {
     antiStickyHint:       '开启后，最近展示的图片会临时降低权重，整轮内不会连续出现；关闭后为纯随机加权（可能连续重复）',
     antiStickyLevel:      '降权力度',
     antiStickyLevelHint:  '1=仅相邻不重复；数值越大，被选中后排除越久、恢复越慢',
+    applyImageConfigs:    '应用自定义图片配置',
+    applyImageConfigsHint: '应用单图配置与正则规则（权重/停留时间/最短显示/透明度）；关闭后所有图片使用默认权重与全局透明度',
     patternRules:         '正则批量配置',
     patternRulesEmpty:    '还没有正则规则。添加一条规则，用正则批量设置一批图片。',
     patternAdd:           '添加规则',
