@@ -35,4 +35,8 @@ export const PLAY_MODES = ['random', 'sequence'] as const;
 export const TRIGGER_MODES = ['timer', 'startup'] as const;
 export const INTERVAL_UNITS = ['seconds', 'days'] as const;
 
-export const ONLINE_GALLERY_URL = 'https://vs.20988.xyz/d/24-vscodebei-jing-tu-tu-ku';
+export const ONLINE_GALLERY_URL = 'https://vs.20988.xyz';
+
+/** 关于区入口，与 src/PickList.ts getMoreMenuItems() 保持一致。 */
+export const GITHUB_REPO_URL = 'https://github.com/AShujiao/vscode-background-cover';
+export const GITHUB_ISSUES_URL = 'https://github.com/AShujiao/vscode-background-cover/issues';

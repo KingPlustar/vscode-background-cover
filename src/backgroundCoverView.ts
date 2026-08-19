@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ActionType, PickList } from './PickList';
 import { getContext, onDidChangeGlobalState } from './global';
+import { resolveCurrentBlur, resolveCurrentImagePath, resolveCurrentOpacity } from './windowBackground';
 
 // Localization
 const messages = {
@@ -261,7 +262,7 @@ export class BackgroundCoverViewProvider implements vscode.TreeDataProvider<Conf
         const onlineFolder = context?.globalState.get<string>('backgroundCoverOnlineFolder');
 
         if (element.label === t('imageSource')) {
-            const currentPath = config.get<string>('imagePath') || t('none');
+            const currentPath = resolveCurrentImagePath(config.get<string>('imagePath') || '') || t('none');
             const displayPath = currentPath.length > 30 ? '...' + currentPath.substr(-30) : currentPath;
             
             items.push(new ConfigItem(t('currentImage'), vscode.TreeItemCollapsibleState.None, 'value', undefined, undefined, undefined, displayPath, 'file'));
@@ -277,8 +278,8 @@ export class BackgroundCoverViewProvider implements vscode.TreeDataProvider<Conf
         }
 
         if (element.label === t('appearance')) {
-            items.push(this.createSettingItem(t('opacity'), 'backgroundCover.opacity', config.get('opacity'), ActionType.BackgroundOpacity, 'eye'));
-            items.push(this.createSettingItem(t('blur'), 'backgroundCover.blur', config.get('blur'), ActionType.BackgroundBlur, 'star-half'));
+            items.push(this.createSettingItem(t('opacity'), 'backgroundCover.opacity', resolveCurrentOpacity(config.get('opacity') ?? 0.2), ActionType.BackgroundOpacity, 'eye'));
+            items.push(this.createSettingItem(t('blur'), 'backgroundCover.blur', resolveCurrentBlur(config.get('blur') ?? 0), ActionType.BackgroundBlur, 'star-half'));
             
             items.push(new ConfigItem(t('sizeMode'), vscode.TreeItemCollapsibleState.Collapsed, 'setting', 'backgroundCover.sizeModel', config.get('sizeModel'), undefined, config.get('sizeModel'), 'layout'));
             items.push(new ConfigItem(t('blendMode'), vscode.TreeItemCollapsibleState.Collapsed, 'setting', 'backgroundCover.blendModel', config.get('blendModel'), undefined, config.get('blendModel'), 'symbol-color'));

@@ -17,6 +17,8 @@ import {
 import { PickList, getAllPets } from './PickList';
 import { onDidChangeGlobalState } from './global';
 import { getColorEntries } from './color';
+import { resolveCurrentBlur, resolveCurrentImagePath, resolveCurrentOpacity } from './windowBackground';
+import { findCachedOnlineImage, isOnlineUrl, readOnlineCacheEntries } from './onlineCache';
 import { ImageOverridesStore } from './imageOverrides';
 import { isPathInside } from './rotation';
 
@@ -92,13 +94,15 @@ export class StudioViewProvider implements WebviewViewProvider {
         const cfg = workspace.getConfiguration('backgroundCover');
         const gs = this.ctx.globalState;
 
-        const imagePath = cfg.get<string>('imagePath') || '';
-        const imagePathDisplay = this.toWebviewUri(imagePath);
+        const cacheEntries = readOnlineCacheEntries();
+
+        const imagePath = resolveCurrentImagePath(cfg.get<string>('imagePath') || '');
+        const imagePathDisplay = this.toWebviewUri(imagePath, cacheEntries);
 
         const recentRaw = gs.get<string[]>('backgroundCoverRecentImages', []) || [];
         const recentImages = recentRaw.map(p => ({
             path: p,
-            display: this.toWebviewUri(p),
+            display: this.toWebviewUri(p, cacheEntries),
             name: this.basename(p)
         }));
 
@@ -175,8 +179,10 @@ export class StudioViewProvider implements WebviewViewProvider {
                 brandLogo,
                 brandName,
                 config: {
-                    opacity: cfg.get('opacity') ?? 0.2,
-                    blur: cfg.get('blur') ?? 0,
+                    // 透明度/模糊度按窗口+工作区独立存储，推送当前窗口实际生效的值，
+                    // 不同工作区窗口的 webview 会显示各自不同的数值。
+                    opacity: resolveCurrentOpacity(cfg.get('opacity') ?? 0.2),
+                    blur: resolveCurrentBlur(cfg.get('blur') ?? 0),
                     imagePath,
                     imagePathDisplay,
                     autoStatus: cfg.get('autoStatus') ?? false,
@@ -189,7 +195,8 @@ export class StudioViewProvider implements WebviewViewProvider {
                     antiStickyLevel: cfg.get('antiStickyLevel') ?? 2,
                     sizeModel: cfg.get('sizeModel') ?? 'cover',
                     blendModel: cfg.get('blendModel') ?? 'auto',
-                    randomImageFolder: cfg.get('randomImageFolder') ?? ''
+                    randomImageFolder: cfg.get('randomImageFolder') ?? '',
+                    perWindowBackground: cfg.get('perWindowBackground') ?? true
                 },
                 state: {
                     petEnabled: gs.get('backgroundCoverPetEnabled') ?? false,
@@ -469,14 +476,23 @@ export class StudioViewProvider implements WebviewViewProvider {
         await commands.executeCommand('workbench.action.reloadWindow');
     }
 
-    /** Convert a local file path to a webview-safe URI. Returns empty for URLs. */
-    private toWebviewUri(p: string): string {
+    /**
+     * Convert a local file path to a webview-safe URI.
+     *
+     * 在线地址不会原样返回：直接把 https 地址塞进 <img src> 会让每次 pushState
+     * 都重新向云存储发请求(最近列表 20 条 = 20 个请求)，白烧流量费。图片下载后
+     * 已落在缓存目录里，这里只引用那份本地副本；没有副本就返回空串走占位图。
+     *
+     * `cacheEntries` 由批量调用方预读一次，避免逐条 readdir。
+     */
+    private toWebviewUri(p: string, cacheEntries?: string[]): string {
         if (!p) { return ''; }
-        if (/^https?:\/\//i.test(p)) { return p; }
+        const local = isOnlineUrl(p) ? findCachedOnlineImage(p, cacheEntries) : p;
+        if (!local) { return ''; }
         try {
-            if (!fs.existsSync(p)) { return ''; }
-            this.ensureRootForFile(p);
-            return this.view!.webview.asWebviewUri(Uri.file(p)).toString();
+            if (!fs.existsSync(local)) { return ''; }
+            this.ensureRootForFile(local);
+            return this.view!.webview.asWebviewUri(Uri.file(local)).toString();
         } catch {
             return '';
         }
@@ -536,10 +552,12 @@ export class StudioViewProvider implements WebviewViewProvider {
         }
 
         const nonce = randomNonce();
+        // img-src/media-src 不放开 https:：所有预览都必须引用下载到本地的缓存副本，
+        // 否则面板每次刷新都会回源云存储。frame-src 仍需 https 供在线图库 iframe 使用。
         const csp = [
             `default-src 'none'`,
-            `img-src ${webview.cspSource} https: data: blob:`,
-            `media-src ${webview.cspSource} https: data: blob:`,
+            `img-src ${webview.cspSource} data: blob:`,
+            `media-src ${webview.cspSource} data: blob:`,
             `style-src ${webview.cspSource} 'unsafe-inline'`,
             `font-src ${webview.cspSource} data:`,
             `script-src 'nonce-${nonce}'`,

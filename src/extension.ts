@@ -22,9 +22,10 @@ import { PickList } from './PickList';
 import vsHelp from './vsHelp';
 import ReaderViewProvider from './readerView';
 import { setContext } from './global';
-import { CUSTOM_CSS_FILE_PATH } from './FileDom';
+import { CUSTOM_JS_FILE_PATH, collectStaleWindowCssFiles } from './FileDom';
 import { BackgroundCoverViewProvider } from './backgroundCoverView';
 import { StudioViewProvider } from './StudioViewProvider';
+import { hasCurrentImageRecord, resolveCurrentImagePath, setCurrentBlur, setCurrentImagePath, setCurrentOpacity } from './windowBackground';
 
 
 export function activate(context: ExtensionContext) {
@@ -46,10 +47,12 @@ export function activate(context: ExtensionContext) {
 	context.subscriptions.push(particleBtn);
 
 	// 异步检查 VSCode 版本变化，不阻塞启动
-	checkVSCodeVersionChanged(context).then(isChanged => {
+	checkVSCodeVersionChanged(context).then(async isChanged => {
 		if (!isChanged) {
 			const config = workspace.getConfiguration('backgroundCover');
-			if (config.imagePath && !fs.existsSync(CUSTOM_CSS_FILE_PATH)) {
+			const resolved = resolveCurrentImagePath(config.imagePath || '');
+			const hasImage = !!resolved || hasCurrentImageRecord();
+			if (hasImage && !fs.existsSync(CUSTOM_JS_FILE_PATH)) {
 				const ex: Extension<any> | undefined = extensions.getExtension('KingPlustar.background-cover');
 				const extensionVersion: string = ex ? ex.packageJSON['version'] : '';
 				window.showInformationMessage(
@@ -65,7 +68,9 @@ export function activate(context: ExtensionContext) {
 					}
 				});
 			} else {
-				// 防止同时运行
+				if (hasImage) {
+					await PickList.applyCurrentBackground();
+				}
 				PickList.autoUpdateBackground();
 			}
 		}
@@ -73,6 +78,9 @@ export function activate(context: ExtensionContext) {
 
 	// 启动自动更换任务
 	PickList.startAutoRandomTask();
+
+	// 回收历史窗口会话遗留的 CSS 文件，不阻塞启动
+	void collectStaleWindowCssFiles();
 
 	// 监听配置变化
 	context.subscriptions.push(workspace.onDidChangeConfiguration(e => {
@@ -82,6 +90,11 @@ export function activate(context: ExtensionContext) {
 			|| e.affectsConfiguration('backgroundCover.triggerMode')
 			|| e.affectsConfiguration('backgroundCover.autoIntervalUnit')) {
 			PickList.startAutoRandomTask();
+		}
+		if (e.affectsConfiguration('backgroundCover.perWindowBackground')) {
+			// 切换独立/共用模式：重新应用一次，让本窗口写到新的目标 CSS 文件，
+			// 并把注入端的地址复位。其余窗口各自收到同一事件后自行处理。
+			void PickList.applyCurrentBackground();
 		}
 	}));
 
@@ -153,25 +166,46 @@ export function activate(context: ExtensionContext) {
 
 
 	context.subscriptions.push(commands.registerCommand('backgroundCover.setConfig', async (key: string, value: any) => {
-		const config = workspace.getConfiguration();
-		await config.update(key, value, true);
-		// Only re-render the background for keys that affect the rendered image.
-		// Rotation parameters (interval, play order, trigger, anti-sticky...) are
-		// handled by the config-change listener; re-rendering here would snap the
-		// background back to the stale persisted single image.
-		const newConfig = workspace.getConfiguration('backgroundCover');
+		if (key === 'backgroundCover.imagePath') {
+			// 全局兜底由 windowBackground 的 globalState 承担，不再回写 settings.json
+			// （旧实现只在首次为空时写入，之后永久冻结在第一张图上）。
+			await setCurrentImagePath(typeof value === 'string' ? value : '');
+			await PickList.applyCurrentBackground();
+			return;
+		}
+		const config = workspace.getConfiguration('backgroundCover');
+		if (key === 'backgroundCover.opacity' || key === 'backgroundCover.blur') {
+			// 独立模式下透明度/模糊度按窗口+工作区记录在 globalState 里，让每个
+			// 窗口的 webview 显示各自的值；共用模式下才回写全局 settings.json。
+			const num = typeof value === 'number' ? value : parseFloat(value);
+			if (Number.isNaN(num)) { return; }
+			if (key === 'backgroundCover.opacity') {
+				await setCurrentOpacity(num, config);
+			} else {
+				await setCurrentBlur(num, config);
+			}
+			PickList.needAutoUpdate(config, false);
+			return;
+		}
+		await config.update(key.replace(/^backgroundCover\./, ''), value, true);
+		if (key === 'backgroundCover.perWindowBackground') {
+			// 重新应用交给 onDidChangeConfiguration 统一处理，避免连开两次。
+			return;
+		}
 		if (key === 'backgroundCover.autoStatus') {
-			// Enabling rotates immediately; disabling reverts to the local selection.
+			// Enabling rotates immediately; disabling reverts to the persisted
+			// single selection (ignoring the volatile rotation record).
 			if (value === true) {
 				await PickList.randomUpdateBackground();
 			} else {
-				PickList.needAutoUpdate(newConfig, true);
+				PickList.needAutoUpdate(config, true);
 			}
-		} else if (key === 'backgroundCover.imagePath') {
-			PickList.needAutoUpdate(newConfig, true);
-		} else if (['backgroundCover.opacity', 'backgroundCover.blur', 'backgroundCover.sizeModel', 'backgroundCover.blendModel'].includes(key)) {
-			PickList.needAutoUpdate(newConfig, false);
+			return;
 		}
+		// Appearance keys (size/blend) and everything else: re-render what is
+		// actually displayed. Rotation parameters (interval, play order, trigger,
+		// anti-sticky...) are handled by the config-change listener.
+		PickList.needAutoUpdate(config, false);
 	}));
 
 	// Initialize context
@@ -193,9 +227,9 @@ export function activate(context: ExtensionContext) {
 	context.globalState.update('ext_version',version);
 	vsHelp.showInfoSupport(`🎉 BackgroundCover 已更新至 ${version}
 🚀 更新内容：
-    1.  修复 VS Code 更新后背景不生效、必须手动关闭重开的问题（现在会引导完全退出并重启，软重载无法清除 VS Code 编译缓存）。
-    2.  修复较新版本 VS Code 安全策略（Trusted Types）下打补丁后背景 / 宠物 / 粒子完全不显示的问题。
-    3.  新增适配 Cursor Agent Window（Glass 窗口）背景显示（by @Aierlanta）。
+    1.  新增多窗口独立背景（高级设置可切回全部窗口共用），透明度/模糊度按窗口独立保存。
+    2.  自动换图失败静默重试，不再弹错、不再清空在线源。
+    3.  完整保留高级轮换设置（播放顺序/触发方式/权重/防重复/正则规则等）。
 
 ❤️ 觉得好用吗？支持一下在线图库运营吧！`);
 	}
@@ -205,8 +239,8 @@ export function activate(context: ExtensionContext) {
 async function checkVSCodeVersionChanged(context: ExtensionContext): Promise<boolean> {
 	// 获取配置
 	let config = workspace.getConfiguration('backgroundCover');
-	// 如果没有设置背景图，则不处理
-	if (!config.imagePath) {
+	const resolved = resolveCurrentImagePath(config.imagePath || '');
+	if (!resolved && !hasCurrentImageRecord()) {
 		return false;
 	}
 

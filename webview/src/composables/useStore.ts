@@ -20,6 +20,8 @@ export interface StudioConfig {
     sizeModel: string;
     blendModel: string;
     randomImageFolder: string;
+    /** false = 所有窗口共用一张背景图（旧版行为） */
+    perWindowBackground: boolean;
 }
 
 export interface StudioState {
@@ -54,7 +56,8 @@ export const config = reactive<StudioConfig>({
     onlineBackground: true,
     sizeModel: 'cover',
     blendModel: 'auto',
-    randomImageFolder: ''
+    randomImageFolder: '',
+    perWindowBackground: true
 });
 
 export const state = reactive<StudioState>({
