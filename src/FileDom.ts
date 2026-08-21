@@ -990,6 +990,17 @@ export class FileDom {
     public async clearBackground(): Promise<boolean> {
         try {
             await this.writeWithPermission(this.windowCssFilePath, '');
+            // 同时清空共享兜底文件：否则清除背景后，新窗口首次渲染仍会先画出旧图。
+            try {
+                if (await fse.pathExists(CUSTOM_CSS_FILE_PATH)) {
+                    const current = await fse.readFile(CUSTOM_CSS_FILE_PATH, 'utf-8');
+                    if (current !== '') {
+                        await this.writeWithPermission(CUSTOM_CSS_FILE_PATH, '');
+                    }
+                }
+            } catch (e) {
+                console.warn('[FileDom] Failed to clear shared CSS fallback:', e);
+            }
             this.requiresReload = false;
             return true;
         } catch (error) {
@@ -1069,14 +1080,23 @@ export class FileDom {
         if (changed) {
             await this.writeWithPermission(this.windowCssFilePath, css);
         }
-        // Shared file is only a pre-handshake fallback. Seed it when missing so a
-        // brand-new window has something to show before this session's trigger.
+        // Shared file is the pre-handshake fallback a brand-new window paints
+        // before this session's trigger arrives. Keep it in sync with the current
+        // background (not just seeded once): otherwise every new window would show
+        // the very first image ever applied instead of the latest selection.
         try {
-            if (!(await fse.pathExists(CUSTOM_CSS_FILE_PATH))) {
+            let sharedChanged = true;
+            if (await fse.pathExists(CUSTOM_CSS_FILE_PATH)) {
+                const current = await fse.readFile(CUSTOM_CSS_FILE_PATH, 'utf-8');
+                if (current === css) {
+                    sharedChanged = false;
+                }
+            }
+            if (sharedChanged) {
                 await this.writeWithPermission(CUSTOM_CSS_FILE_PATH, css);
             }
         } catch (error) {
-            console.warn('[FileDom] Failed to seed shared CSS fallback:', error);
+            console.warn('[FileDom] Failed to update shared CSS fallback:', error);
         }
         return changed;
     }
