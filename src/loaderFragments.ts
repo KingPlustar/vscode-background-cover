@@ -94,6 +94,18 @@ function bgcShouldReduceMotion() {
         return false;
     }
 }
+// [fork-temp] 过渡开关判定：关闭时生成的 CSS 不再包含 transition 声明。
+// background-image 是离散属性，CSS 的 transition 管不到这里的 JS 交叉淡化，
+// 因此必须由 CSS 内容反推开关键状态 —— 好处是切换开关只需刷新 CSS/动态脚本，
+// 不用重新打 workbench 引导补丁（上游 3.7.0 此处无开关、恒为淡化）。
+function bgcTransitionDisabledInCss(css) {
+    try {
+        var rule = bgcExtractBeforeRule(css);
+        return !/(?:^|;)\\s*transition\\s*:/i.test(rule || '');
+    } catch (e) {
+        return false;
+    }
+}
 function bgcExtractBeforeRule(css) {
     try {
         var m = /body::before\\s*\\{([\\s\\S]*?)\\}/.exec(css);
@@ -142,6 +154,13 @@ function bgcApplyStyleWithFade(targetWindow, style, css) {
             return;
         }
         var beforeRule = bgcExtractBeforeRule(css);
+        // [fork-temp] 用户关闭切换过渡动画时直接切换，跳过下面的 JS 交叉淡化。
+        if (bgcTransitionDisabledInCss(css)) {
+            style.textContent = css;
+            targetWindow.__bgcLastImageUrl = url;
+            targetWindow.__bgcPendingCss = null;
+            return;
+        }
         var oldCss = style.textContent;
         var doc = targetWindow.document;
         var layer = beforeRule && doc ? bgcGetFadeLayer(doc) : null;
