@@ -109,6 +109,21 @@
                     <el-icon><ArrowRight /></el-icon>
                 </el-button>
             </div>
+
+            <div class="row">
+                <span class="row-label">{{ t('cacheLimit') }}</span>
+                <el-input-number
+                    :model-value="Number(config.cacheLimit ?? DEFAULT_CACHE_LIMIT)"
+                    :min="10"
+                    :max="10000"
+                    :step="50"
+                    size="small"
+                    controls-position="right"
+                    class="interval-input"
+                    @change="onCacheLimitChange"
+                />
+            </div>
+            <div class="row-hint">{{ t('cacheLimitHint') }}</div>
         </el-card>
 
         <!-- Per-image rotation settings -->
@@ -436,6 +451,7 @@
             >
                 <el-option v-for="opt in BLEND_MODES" :key="opt" :label="opt" :value="opt" />
             </el-select>
+            <div class="row-hint">{{ t('blendModeHint') }}</div>
         </el-card>
 
         <!-- Misc -->
@@ -456,12 +472,12 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture, Filter, View, RefreshLeft, MoreFilled, Monitor } from '@element-plus/icons-vue';
+import { Refresh, ArrowRight, FullScreen, Brush, FolderOpened, Star, Plus, Edit, Delete, Picture, Filter, View, RefreshLeft, MoreFilled, Monitor, MagicStick } from '@element-plus/icons-vue';
 import { ElMessageBox } from 'element-plus';
 import { useI18n } from '../composables/useI18n';
 import { useBridge } from '../composables/useBridge';
 import { config, state } from '../composables/useStore';
-import { ActionType, SIZE_MODES, BLEND_MODES } from '../constants';
+import { ActionType, SIZE_MODES, BLEND_MODES, DEFAULT_CACHE_LIMIT } from '../constants';
 import { isVideoPath } from '../utils/media';
 
 const { t } = useI18n();
@@ -482,6 +498,16 @@ function onIntervalChange(v: number | undefined) {
         bridge.post({ type: 'setConfig', key: 'autoInterval', value });
     }, 300);
 }
+
+let cacheLimitTimer: number | undefined;
+function onCacheLimitChange(v: number | undefined) {
+    const value = Number(v ?? DEFAULT_CACHE_LIMIT);
+    if (cacheLimitTimer) { clearTimeout(cacheLimitTimer); }
+    cacheLimitTimer = window.setTimeout(() => {
+        bridge.post({ type: 'setConfig', key: 'cacheLimit', value });
+    }, 300);
+}
+
 function onSourceFolder() { bridge.post({ type: 'runAction', action: ActionType.AddDirectory }); }
 function onOpenCache()    { bridge.post({ type: 'runAction', action: ActionType.OpenCacheFolder }); }
 function onSupport()      { bridge.post({ type: 'runAction', action: ActionType.OpenFilePath, path: '//resources//support.jpg' }); }

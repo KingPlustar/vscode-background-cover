@@ -99,10 +99,12 @@ export function hasCurrentImageRecord(): boolean {
     return readGlobalImage() !== undefined;
 }
 
-export function resolveCurrentImagePath(globalFallback?: string): string {
-    if (volatileImagePath !== undefined) {
-        return volatileImagePath;
-    }
+/**
+ * 当前"持久化"的背景图：window → workspace → global → settings 兜底。
+ * 与 resolveCurrentImagePath 的区别是刻意忽略 volatile 内存态（定时自动换图
+ * 只写内存的临时图），供判断"在线单图源记录是否仍是当前背景"这类场景使用。
+ */
+export function getPersistedCurrentImage(globalFallback?: string): string {
     if (isPerWindowEnabled()) {
         const windowMap = readImageMap(WINDOW_IMAGES_KEY);
         const sessionHash = getSessionHash();
@@ -125,31 +127,25 @@ export function resolveCurrentImagePath(globalFallback?: string): string {
     return globalFallback || '';
 }
 
+export function resolveCurrentImagePath(globalFallback?: string): string {
+    if (volatileImagePath !== undefined) {
+        return volatileImagePath;
+    }
+    return getPersistedCurrentImage(globalFallback);
+}
+
 /**
- * 解析“持久化的手动选中图”：窗口记录 → 工作区记录 → 全局兜底 → settings.json 旧值。
- * 与 resolveCurrentImagePath 的区别是跳过内存态 volatile（轮换 tick 写入的临时记录），
- * 用于“关闭自动随机后回落本地单选”的渲染。
+ * 在线单图源记录（backgroundCoverSingleImageSource）是否仍有效：
+ * 记录本身必须是在线 URL，且与当前持久化的背景图一致（用户确实还在用这张
+ * 在线单图）。一旦用户已经换成本地图/文件夹，这条记录就是陈旧的 —— 自动
+ * 换图时它会把本地 randomImageFolder 短路成"每轮重下同一张在线图"，图片
+ * 永远不会变，因此陈旧记录必须被识别并清理。
  */
-export function resolvePersistedImagePath(globalFallback?: string): string {
-    if (isPerWindowEnabled()) {
-        const windowMap = readImageMap(WINDOW_IMAGES_KEY);
-        const sessionHash = getSessionHash();
-        if (hasOwn(windowMap, sessionHash)) {
-            return windowMap[sessionHash] || '';
-        }
-        const workspaceKey = getWorkspaceKey();
-        if (workspaceKey) {
-            const workspaceMap = readImageMap(WORKSPACE_IMAGES_KEY);
-            if (hasOwn(workspaceMap, workspaceKey)) {
-                return workspaceMap[workspaceKey] || '';
-            }
-        }
+export function isSingleSourceActive(singleSource: string | undefined): boolean {
+    if (!singleSource || !/^https?:\/\//i.test(singleSource)) {
+        return false;
     }
-    const globalImage = readGlobalImage();
-    if (globalImage !== undefined) {
-        return globalImage;
-    }
-    return globalFallback || '';
+    return getPersistedCurrentImage() === singleSource;
 }
 
 export interface SetImageOptions {

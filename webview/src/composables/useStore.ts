@@ -1,4 +1,5 @@
 import { reactive } from 'vue';
+import { DEFAULT_CACHE_LIMIT, DEFAULT_PARTICLE_FPS } from '../constants';
 
 /**
  * Reactive snapshot of extension-side configuration mirrored into the webview.
@@ -23,6 +24,8 @@ export interface StudioConfig {
     randomImageFolder: string;
     /** false = 所有窗口共用一张背景图（旧版行为） */
     perWindowBackground: boolean;
+    /** 在线图片缓存上限（文件个数），超出后按时间自动清理最旧的文件 */
+    cacheLimit: number;
 }
 
 export interface StudioState {
@@ -33,6 +36,8 @@ export interface StudioState {
     particleColor: string;
     particleCount: number;
     particleOpacity: number;
+    /** 粒子特效帧率上限（#230）：高刷屏下限制重绘次数，降低 GPU 占用 */
+    particleFps: number;
     recentImages: Array<{ path: string; display: string; name: string }>;
     folderImages: Array<{ path: string; display: string; name: string }>;
     folderImagesTotal: number;
@@ -59,7 +64,8 @@ export const config = reactive<StudioConfig>({
     sizeModel: 'cover',
     blendModel: 'auto',
     randomImageFolder: '',
-    perWindowBackground: true
+    perWindowBackground: true,
+    cacheLimit: DEFAULT_CACHE_LIMIT,
 });
 
 export const state = reactive<StudioState>({
@@ -70,6 +76,7 @@ export const state = reactive<StudioState>({
     particleColor: '#ffffff',
     particleCount: 60,
     particleOpacity: 0.5,
+    particleFps: DEFAULT_PARTICLE_FPS,
     recentImages: [],
     folderImages: [],
     folderImagesTotal: 0,

@@ -22,7 +22,8 @@ import { PickList } from './PickList';
 import vsHelp from './vsHelp';
 import ReaderViewProvider from './readerView';
 import { setContext } from './global';
-import { CUSTOM_JS_FILE_PATH, collectStaleWindowCssFiles } from './FileDom';
+import { CUSTOM_JS_FILE_PATH, collectStaleWindowCssFiles, detectPatchState } from './FileDom';
+import { pruneOnlineCache } from './onlineCache';
 import { BackgroundCoverViewProvider } from './backgroundCoverView';
 import { StudioViewProvider } from './StudioViewProvider';
 import { hasCurrentImageRecord, resolveCurrentImagePath, setCurrentBlur, setCurrentImagePath, setCurrentOpacity } from './windowBackground';
@@ -52,11 +53,17 @@ export function activate(context: ExtensionContext) {
 			const config = workspace.getConfiguration('backgroundCover');
 			const resolved = resolveCurrentImagePath(config.imagePath || '');
 			const hasImage = !!resolved || hasCurrentImageRecord();
-			if (hasImage && !fs.existsSync(CUSTOM_JS_FILE_PATH)) {
+			// A1: 以实际内核文件的内容标记判定补丁状态（none/legacy/latest）。
+			// 覆盖"同一版本重装 VS Code / 用户手动还原 workbench 文件 / 打过旧版补丁"
+			// 这些仅凭版本号或文件存在性检测不到的丢失场景。
+			const patchState = await detectPatchState();
+			const patchOutdated = patchState !== 'latest' || !fs.existsSync(CUSTOM_JS_FILE_PATH);
+
+			if (hasImage && patchOutdated) {
 				const ex: Extension<any> | undefined = extensions.getExtension('KingPlustar.background-cover');
 				const extensionVersion: string = ex ? ex.packageJSON['version'] : '';
 				window.showInformationMessage(
-					`BackgroundCover ${extensionVersion || ''}：检测到核心文件尚未初始化，需要重新应用背景补丁。是否立即执行？ / BackgroundCover ${extensionVersion || ''}: Core files are not initialized. Apply the background patch now?`,
+					`BackgroundCover ${extensionVersion || ''}：检测到背景补丁缺失或版本过旧，需要重新应用。是否立即执行？ / BackgroundCover ${extensionVersion || ''}: Background patch is missing or outdated. Apply it now?`,
 					'Apply / 应用',
 					'Later / 稍后'
 				).then(async result => {
@@ -82,6 +89,10 @@ export function activate(context: ExtensionContext) {
 	// 回收历史窗口会话遗留的 CSS 文件，不阻塞启动
 	void collectStaleWindowCssFiles();
 
+	// 收敛在线图片缓存目录：无扩展名在线源每次换图都会新增缓存文件，长期自动换图
+	// 会让 images/ 无限增长（#233）。启动时清一次超过上限的最旧文件，不阻塞启动。
+	void pruneOnlineCache();
+
 	// 监听配置变化
 	context.subscriptions.push(workspace.onDidChangeConfiguration(e => {
 		if (e.affectsConfiguration('backgroundCover.autoStatus')
@@ -95,6 +106,10 @@ export function activate(context: ExtensionContext) {
 			// 切换独立/共用模式：重新应用一次，让本窗口写到新的目标 CSS 文件，
 			// 并把注入端的地址复位。其余窗口各自收到同一事件后自行处理。
 			void PickList.applyCurrentBackground();
+		}
+		if (e.affectsConfiguration('backgroundCover.cacheLimit')) {
+			// 调小上限后立即收敛一次，不必等下次下载或重启窗口。
+			void pruneOnlineCache();
 		}
 	}));
 
@@ -211,10 +226,8 @@ export function activate(context: ExtensionContext) {
 	// Initialize context
 	commands.executeCommand('setContext', 'backgroundCover.mode', 'menu');
 
-	// 监听主题变化
-	window.onDidChangeActiveColorTheme((event) => {
-        PickList.autoUpdateBlendModel();
-    });
+	// A4: 主题感知混合模式已改为注入 CSS 的变量 + :has() 即时适配（见 backgroundCss.ts），
+	// 不再需要监听主题变化并弹窗确认 / 重打补丁 / 重载窗口。
 
 
 
@@ -225,11 +238,13 @@ export function activate(context: ExtensionContext) {
 	
 	if(openVersion != version){
 	context.globalState.update('ext_version',version);
-	vsHelp.showInfoSupport(`🎉 BackgroundCover 已更新至 ${version}
+	vsHelp.showInfoSupport(`🎉 BackgroundCover ${version}
 🚀 更新内容：
-    1.  新增多窗口独立背景（高级设置可切回全部窗口共用），透明度/模糊度按窗口独立保存。
-    2.  自动换图失败静默重试，不再弹错、不再清空在线源。
-    3.  完整保留高级轮换设置（播放顺序/触发方式/权重/防重复/正则规则等）。
+    1. 背景切换过渡动画：换图时旧图渐隐、新图渐显，平滑不闪屏，支持自动换图 / 手动换图。
+    2. 补丁状态自检：VS Code 更新 / 重装或补丁丢失时自动提示重新应用。
+    3. 混合模式 auto 主题自适应：切换深浅主题即时生效，无需重载窗口。
+    4. 背景源支持 ~ / 环境变量 / 文件夹；换图前自动预加载。
+    5. 完整保留高级轮换设置（播放顺序/触发方式/权重/防重复/正则规则等）。
 
 ❤️ 觉得好用吗？支持一下在线图库运营吧！`);
 	}

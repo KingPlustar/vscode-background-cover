@@ -11,11 +11,22 @@ import version from './version';
 import { SudoPromptHelper } from './SudoPromptHelper';
 import * as fse from 'fs-extra';
 import { getContext } from './global';
-import { getOnlineCacheDir, getOnlineCacheHash } from './onlineCache';
-import { getParticleEffectJs } from './ParticleEffect';
+import { getOnlineCacheDir, getOnlineCacheHash, findCachedOnlineImage, pruneOnlineCache } from './onlineCache';
+import { getParticleEffectJs, DEFAULT_PARTICLE_FPS } from './ParticleEffect';
 import { getAllPets } from './PickList';
 import Color from './color';
 import { getSessionHash, getWindowCssFileName, isPerWindowEnabled } from './windowBackground';
+import { detectPatchStateFromFile, PatchState, BOOTSTRAP_VERSION } from './patchState';
+import { expandPathVariables, hasFileExtension, pickRandomFromFolder } from './pathUtil';
+import {
+    getCorruptionWarningCss,
+    getTransitionDeclaration,
+    getTransitionReducedMotionCss,
+    resolveBlendModeDeclaration,
+    resolveBlendModeValue,
+    resolveThemeBlendRules
+} from './backgroundCss';
+import { IMAGE_FADE_JS, PRELOAD_IMAGE_JS } from './loaderFragments';
 import {
     BackgroundApplyCancelledError,
     BackgroundDownloadError,
@@ -158,7 +169,6 @@ const WEB_RELATIVE_JS_PATH = IS_CODE_SERVER_TARGET ? getWebRelativePath(CUSTOM_J
 const CUSTOM_ASSET_DIR = path.join(selectedWorkbench.root, 'background-cover-assets');
 const RELATIVE_URL_PLACEHOLDER = '__BACKGROUND_COVER_BASE__';
 const HTML_CACHE_BUST_PARAM = 'background-cover';
-const BOOTSTRAP_VERSION = '1';
 const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 const DEFAULT_ACCEPT_HEADER = 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8';
 const DOWNLOAD_MAX_ATTEMPTS = 3;
@@ -318,6 +328,17 @@ export async function collectStaleWindowCssFiles(): Promise<void> {
     }
 }
 
+/**
+ * 补丁状态机（A1）：按主 workbench bundle 的实际内容标记判定补丁状态。
+ * - latest：已按当前 bootstrap 版本打过补丁；
+ * - legacy：打过旧版补丁（需要升级）；
+ * - none：文件被还原 / VS Code 更新替换 / 首次安装。
+ * 主文件缺失时也返回 none，保持静默。
+ */
+export async function detectPatchState(): Promise<PatchState> {
+    return detectPatchStateFromFile(JS_FILE_PATH);
+}
+
 export class FileDom {
     private readonly filePath: string;
     private readonly extName = "backgroundCover";
@@ -329,6 +350,7 @@ export class FileDom {
     private readonly systemType: string;
     private readonly forceHttpsUpgrade: boolean;
     private readonly skipOnlineCache: boolean;
+    private readonly transitionEnabled: boolean;
     private readonly shouldApply: () => boolean;
     private readonly windowCssFilePath: string;
     public readonly windowCssToken: string;
@@ -362,6 +384,10 @@ export class FileDom {
         this.blendModel = blendModel || this.workConfig.get('blendModel', '');
         this.systemType = os.type();
         this.forceHttpsUpgrade = this.workConfig.get('forceHttpsUpgrade', true);
+        // 背景切换动画始终启用；仍尊重系统减少动态效果设置。
+        this.transitionEnabled = true;
+        // skipOnlineCache 只影响静态图是否复用已下载副本（换图源需要重下覆盖），
+        // 不影响无扩展名动态源（其文件数由 pruneOnlineCache 收敛）。
         this.skipOnlineCache = skipOnlineCache;
         this.shouldApply = shouldApply;
         // 共用模式(perWindowBackground=false)下直接写共享 CSS 文件，并用固定 token
@@ -385,8 +411,35 @@ export class FileDom {
         return ['.mp4', '.webm', '.ogg', '.mov'].includes(ext);
     }
 
+    /**
+     * 若 imagePath 指向一个本地文件夹（无扩展名且是目录），随机返回其中一张
+     * 图片/视频的完整路径；URL、data:、单文件或不存在一律返回 undefined。
+     */
+    private async resolveFolderBackground(): Promise<string | undefined> {
+        const lower = this.imagePath.toLowerCase();
+        if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('data:')) {
+            return undefined;
+        }
+        if (hasFileExtension(this.imagePath)) {
+            return undefined;
+        }
+        return pickRandomFromFolder(this.imagePath);
+    }
+
     // 本地图片转换为vscode可访问路径
     private async initializeImage(): Promise<void> {
+        // A3：展开 ~ / ${ENV} / $ENV；无扩展名的本地路径按「文件夹」处理，随机取一张
+        // 作为本次背景（支持直接把壁纸目录填进 imagePath）。
+        // 注意只对本地路径展开：http/data URL 的查询串里可能含 $ 字面量，不能动。
+        const lowerInput = this.imagePath.toLowerCase();
+        if (!lowerInput.startsWith('http://') && !lowerInput.startsWith('https://') && !lowerInput.startsWith('data:')) {
+            this.imagePath = expandPathVariables(this.imagePath);
+        }
+        const folderPicked = await this.resolveFolderBackground();
+        if (folderPicked) {
+            this.imagePath = folderPicked;
+        }
+
         let lowerPath = this.imagePath.toLowerCase();
 
         if (lowerPath.startsWith('http://') || lowerPath.startsWith('https://')) {
@@ -454,8 +507,16 @@ export class FileDom {
             
             const cachePath = path.join(cacheDir, `${urlHash}${ext}`);
 
+            // 复用已有缓存：静态图（有扩展名 URL）下载到固定的 <hash><ext> 路径。
+            // skipOnlineCache=true（自动随机换图时设置）表示"该源每次可能返回不同
+            // 内容"（如 picsum.photos 的 .jpg 轮换源），必须重新下载并覆盖同一文件来
+            // 换图——覆盖不累积磁盘，只是费流量。无扩展名/动态源（uniqueDownload）
+            // 另走下方按内容哈希命名的新文件分支，文件数由 pruneOnlineCache 收敛。
             if (!this.skipOnlineCache && isStaticImage && !uniqueDownload && await fse.pathExists(cachePath)) {
                 this.imagePath = cachePath;
+                // 复用即刷新 mtime：pruneOnlineCache 按 mtime 淘汰最旧的文件，不刷新的话
+                // 很久以前设置的静态背景会因为"下载时间最旧"被清掉，下次应用还得重下。
+                await this.touchCacheFile(cachePath);
                 return;
             }
 
@@ -485,12 +546,32 @@ export class FileDom {
                         finalExt = this.getExtensionFromContentType(contentType) || finalExt;
                     }
 
+                    // 动态源按"内容"而不是"下载时刻"命名：图池型/内容稳定的源重复下载
+                    // 同一张图时会命中已有文件，不再新增副本（否则每次换图都多一个文件，
+                    // 只能靠 pruneOnlineCache 压回上限）。哈希失败时退回时间戳命名，
+                    // 保证新增逻辑不会让下载失败。命名保留 <urlHash> 前缀，
+                    // findCachedOnlineImage 的 URL→文件查找不受影响。
+                    const contentHash = uniqueDownload ? await this.hashFile(tempPath) : undefined;
                     const targetPath = (!uniqueDownload && isStaticImage)
                         ? cachePath
-                        : path.join(cacheDir, `${urlHash}-${timestamp}${finalExt || '.img'}`);
+                        : path.join(cacheDir, `${urlHash}-${contentHash || timestamp}${finalExt || '.img'}`);
+
+                    if (uniqueDownload && contentHash && await fse.pathExists(targetPath)) {
+                        // 内容已在缓存里：丢弃临时文件，复用已有副本并刷新 mtime。
+                        // 没有新增文件，所以这里不需要再收敛缓存。
+                        await fse.remove(tempPath);
+                        this.imagePath = targetPath;
+                        await this.touchCacheFile(targetPath);
+                        return;
+                    }
 
                     await fse.move(tempPath, targetPath, { overwrite: true });
                     this.imagePath = targetPath;
+                    // 只有无扩展名/动态地址的在线源会新增文件（静态源是覆盖写同一路径，
+                    // 目录不增长），所以只在这条分支收敛缓存，避免每次换图都扫一遍目录。
+                    if (uniqueDownload) {
+                        await pruneOnlineCache();
+                    }
                     return;
                 } catch (error) {
                     lastError = wrapDownloadError(error);
@@ -512,6 +593,15 @@ export class FileDom {
                 console.warn('[FileDom] Download failed, using cached image:', lastError);
                 return;
             }
+            // 下载失败时兜底复用同 URL 已下载过的最新文件。对无扩展名/动态地址源，
+            // 之前每次下载都生成 <hash>-<timestamp><ext> 新文件，cachePath 永远不存在，
+            // 这里必须用 findCachedOnlineImage 才能命中旧的下载记录。
+            const fallback = findCachedOnlineImage(this.imagePath);
+            if (fallback) {
+                this.imagePath = fallback;
+                console.warn('[FileDom] Download failed, using latest cached image:', lastError);
+                return;
+            }
             throw lastError || new BackgroundDownloadError('Failed to download image');
         } catch (error) {
             if (error instanceof BackgroundApplyCancelledError) {
@@ -520,6 +610,34 @@ export class FileDom {
             const downloadError = wrapDownloadError(error);
             console.error('[FileDom] Failed to download image:', downloadError);
             throw downloadError;
+        }
+    }
+
+    /**
+     * 流式计算文件内容哈希（sha256），用于动态在线源按内容去重。
+     * 用 sha256 而非 md5：成本几乎相同，但避免"内容寻址撞车导致显示错图"的理论风险。
+     * 读失败时返回 undefined，调用方退回按时间戳命名。
+     */
+    private hashFile(filePath: string): Promise<string | undefined> {
+        return new Promise(resolve => {
+            const hash = crypto.createHash('sha256');
+            const stream = fs.createReadStream(filePath);
+            stream.on('data', chunk => hash.update(chunk));
+            stream.on('error', () => resolve(undefined));
+            stream.on('end', () => resolve(hash.digest('hex')));
+        });
+    }
+
+    /**
+     * 刷新缓存文件的 mtime。pruneOnlineCache 按 mtime 淘汰最旧的文件，只有刷新
+     * 才能让淘汰按"最近使用"而不是"最近下载"，正在用的图就不会被清掉。
+     */
+    private async touchCacheFile(filePath: string): Promise<void> {
+        try {
+            const now = new Date();
+            await fse.utimes(filePath, now, now);
+        } catch {
+            // 刷新失败不影响使用
         }
     }
 
@@ -1377,8 +1495,10 @@ export class FileDom {
         const opacity = context.globalState.get('backgroundCoverParticleOpacity', 0.6);
         const color = this.normalizeParticleColor(context.globalState.get('backgroundCoverParticleColor', '#ffffff'));
         const count = context.globalState.get('backgroundCoverParticleCount', 50);
+        // 帧率上限（#230）：高刷屏下不节流，粒子重绘次数会随刷新率线性上升
+        const fps = context.globalState.get('backgroundCoverParticleFps', DEFAULT_PARTICLE_FPS);
 
-        return getParticleEffectJs(opacity, color, count);
+        return getParticleEffectJs(opacity, color, count, fps);
     }
 
     private normalizeParticleColor(value: unknown): string {
@@ -1430,7 +1550,10 @@ export class FileDom {
                 url: rawPath,
                 opacity: opacity,
                 blur: this.blur,
-                blendMode: this.blendModel
+                // A4: auto 模式注入 CSS 变量，主题切换由 :has() 即时适配
+                blendMode: resolveBlendModeValue(this.blendModel),
+                // A6: 视频元素同样支持淡入淡出（loader 的 applyVideo 读取该字段）
+                transition: this.transitionEnabled
             };
             // Escape backticks and ${} for template literal safety, but keep backslashes as is (JSON stringified)
             const jsonConfig = JSON.stringify(config)
@@ -1441,7 +1564,8 @@ export class FileDom {
             /*background-cover-video-start*/
             ${jsonConfig}
             /*background-cover-video-end*/
-            ${this.getCorruptionWarningCss()}
+            ${resolveThemeBlendRules(this.blendModel)}
+            ${getCorruptionWarningCss()}
             `;
         }
 
@@ -1461,9 +1585,12 @@ export class FileDom {
             z-index: 2;
             pointer-events: none;
             filter: blur(${this.blur}px);
-            mix-blend-mode: ${this.blendModel};
+            ${resolveBlendModeDeclaration(this.blendModel)}
+            ${getTransitionDeclaration(this.transitionEnabled)}
         }
-        ${this.getCorruptionWarningCss()}
+        ${resolveThemeBlendRules(this.blendModel)}
+        ${getTransitionReducedMotionCss(this.transitionEnabled)}
+        ${getCorruptionWarningCss()}
         `;
     }
 
@@ -1599,6 +1726,12 @@ export class FileDom {
                     video.style.opacity = config.opacity + '';
                     video.style.filter = 'blur(' + config.blur + 'px)';
                     video.style.mixBlendMode = config.blendMode;
+
+                    // A6: 视频切换同样支持淡入淡出（尊重系统"减少动态效果"）
+                    if (config.transition) {
+                        var reducedMotion = (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+                        video.style.transition = reducedMotion ? 'none' : 'opacity .25s ease, filter .25s ease';
+                    }
 
                     if (video.paused) {
                         video.play().catch(e => {
@@ -1846,6 +1979,9 @@ export class FileDom {
             
             ${videoSetup}
 
+            // A6: 换图淡入淡出片段（background-image 不可过渡，用 opacity 模拟交叉淡化）
+            ${IMAGE_FADE_JS}
+
             function applyStyle(targetWindow, css) {
                 try {
                     const doc = targetWindow && targetWindow.document;
@@ -1856,9 +1992,8 @@ export class FileDom {
                         style.id = 'background-cover-style';
                         doc.head.appendChild(style);
                     }
-                    if (style.textContent !== css) {
-                        style.textContent = css;
-                    }
+                    // A6: 换图交叉淡化（cross-fade 图片级混合，body::before 规则全程不变）
+                    bgcApplyStyleWithFade(targetWindow, style, css);
                 } catch (e) {
                     console.error('[BackgroundCover] applyStyle error:', e);
                 }
@@ -1964,6 +2099,9 @@ export class FileDom {
                 console.error('[BackgroundCover] window.open patch error:', e);
             }
 
+            // A5: 图片预加载片段（换图前预热，消除首帧闪烁）
+            ${PRELOAD_IMAGE_JS}
+
             let cssLoadInFlight = false;
             let lastCssLoadAt = 0;
 
@@ -1996,6 +2134,9 @@ export class FileDom {
                         lastVideoConfig = null;
                     }
 
+                    // A5: 换图前先预加载目标图片，避免首帧闪烁（最长等待 2s）
+                    return preloadBackgroundImage(resolvedCss);
+                }).then(() => {
                     applyToAll();
                 }).catch(e => console.error('[BackgroundCover] Load error:', e))
                 .finally(() => {
@@ -2468,19 +2609,6 @@ export class FileDom {
             }
         })();
         `;
-    }
-
-    // 隐藏损坏提示
-    private getCorruptionWarningCss(): string {
-        const translations = [
-            'installation appears to be corrupt',
-            '安装似乎损坏',
-        ];
-        return translations.map(trans => `
-        .notification-toast-container:has([aria-label*='${trans}']) {
-            display: none;
-        }
-        `).join('');
     }
 
     // 获取css样式值
