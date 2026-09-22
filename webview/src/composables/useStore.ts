@@ -35,6 +35,8 @@ export interface StudioConfig {
     perWindowBackground: boolean;
     /** 在线图片缓存上限（文件个数），超出后按时间自动清理最旧的文件 */
     cacheLimit: number;
+    /** [fork-temp] 换图是否使用淡入淡出过渡（上游 3.7.0 硬编码为开启且无设置项） */
+    backgroundTransition: boolean;
 }
 
 export interface StudioState {
@@ -75,6 +77,8 @@ export const config = reactive<StudioConfig>({
     randomImageFolder: '',
     perWindowBackground: true,
     cacheLimit: DEFAULT_CACHE_LIMIT,
+    // [fork-temp] 上游硬编码为开启且无设置项
+    backgroundTransition: true,
 });
 
 export const state = reactive<StudioState>({

@@ -205,7 +205,8 @@ export class StudioViewProvider implements WebviewViewProvider {
                     randomImageFolder: cfg.get('randomImageFolder') ?? '',
                     perWindowBackground: cfg.get('perWindowBackground') ?? true,
                     cacheLimit: cfg.get('cacheLimit') ?? DEFAULT_ONLINE_CACHE_LIMIT,
-                    backgroundTransition: true
+                    // [fork-temp] 上游此处硬编码为 true（无设置项）；本 fork 改为下发真实配置值。
+                    backgroundTransition: cfg.get('backgroundTransition') ?? true
                 },
                 state: {
                     petEnabled: gs.get('backgroundCoverPetEnabled') ?? false,

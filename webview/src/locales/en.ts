@@ -32,6 +32,8 @@ export default {
     sizeMode:          'Size Mode',
     blendMode:         'Blend Mode',
     blendModeHint:     'Auto adapts to the active theme instantly via CSS variables (dark = lighten, light = multiply).',
+    backgroundTransition:  'Switch transition',
+    backgroundTransitionHint: 'Fade between backgrounds (preload stays on); turn off for instant switching. Fork-only temporary option (upstream forces this on).',
     windowScope:       'Window Background',
     perWindowBackground:     'Per-window background',
     perWindowBackgroundHint: 'On: each window keeps its own image. Off: all windows share one.',

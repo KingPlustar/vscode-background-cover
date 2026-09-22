@@ -195,6 +195,11 @@
                     "default": "auto",
                     "description": "Background image blend mode / 图片文字混合模式，对应主题模式"
                 },
+                "backgroundCover.backgroundTransition": {
+                    "type": "boolean",
+                    "default": true,
+                    "markdownDescription": "Fade between backgrounds (preload stays on). Turn off for instant switching.\n\n**[fork-temp]** Fork-only temporary option: upstream 3.7.0 hard-codes this transition as always on and ships no setting for it. Keep this key when merging upstream changes.\n\n换图时旧图渐隐、新图渐显（预加载始终启用）；关闭后立即切换。\n\n**[fork-temp]** 本 fork 临时选项：上游 3.7.0 把该过渡硬编码为始终开启、未提供设置项。合并上游改动时请保留此键。"
+                },
                 "backgroundCover.defaultOnlinePage": {
                     "type": "string",
                     "default": "https://vs.20988.xyz/d/24-vscodebei-jing-tu-tu-ku",

@@ -384,8 +384,11 @@ export class FileDom {
         this.blendModel = blendModel || this.workConfig.get('blendModel', '');
         this.systemType = os.type();
         this.forceHttpsUpgrade = this.workConfig.get('forceHttpsUpgrade', true);
-        // 背景切换动画始终启用；仍尊重系统减少动态效果设置。
-        this.transitionEnabled = true;
+        // [fork-temp] 过渡动画改为可配置（开关见 package.json backgroundCover.backgroundTransition）。
+        // 上游 3.7.0 此处硬编码为 true、且没有对应配置项；若上游后续新增同名配置或改动
+        // transitionEnabled 的生成逻辑，合并时需人工裁决，避免重复定义/行为覆盖。
+        // 无论开关如何，系统「减少动态效果」仍会覆盖（见 backgroundCss.getTransitionReducedMotionCss）。
+        this.transitionEnabled = this.workConfig.get<boolean>('backgroundTransition', true) !== false;
         // skipOnlineCache 只影响静态图是否复用已下载副本（换图源需要重下覆盖），
         // 不影响无扩展名动态源（其文件数由 pruneOnlineCache 收敛）。
         this.skipOnlineCache = skipOnlineCache;

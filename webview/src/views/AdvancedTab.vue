@@ -455,6 +455,17 @@
                 <el-option v-for="opt in BLEND_MODES" :key="opt" :label="opt" :value="opt" />
             </el-select>
             <div class="row-hint">{{ t('blendModeHint') }}</div>
+
+            <!-- [fork-temp] 上游 3.7.0 的换图过渡动画是硬编码强制开启的，这里补一个开关；
+                 上游若新增同名设置或改动相关代码，合并时需人工裁决。 -->
+            <div class="row">
+                <span class="row-label">{{ t('backgroundTransition') }}</span>
+                <el-switch
+                    :model-value="config.backgroundTransition !== false"
+                    @change="(v: any) => bridge.post({ type: 'setConfig', key: 'backgroundTransition', value: v })"
+                />
+            </div>
+            <div class="row-hint">{{ t('backgroundTransitionHint') }}</div>
         </el-card>
 
         <!-- Misc -->

@@ -32,6 +32,8 @@ export default {
     sizeMode:          '尺寸模式',
     blendMode:         '混合模式',
     blendModeHint:     'auto 通过 CSS 变量即时适配当前主题（深色=lighten，浅色=multiply），不再弹窗/重启',
+    backgroundTransition:  '切换过渡动画',
+    backgroundTransitionHint: '换图时旧图渐隐、新图渐显（预加载始终启用）；关闭后立即切换。本 fork 临时开关（上游为强制开启）',
     windowScope:       '窗口背景',
     perWindowBackground:     '每个窗口独立',
     perWindowBackgroundHint: '开启后各窗口可显示不同背景；关闭则所有窗口共用同一张',
