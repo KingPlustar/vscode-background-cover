@@ -31,6 +31,7 @@
                 <div
                     v-for="img in state.recentImages"
                     :key="img.path"
+                    v-thumb="img"
                     class="thumb"
                     :class="{ 'is-active': img.path === config.imagePath }"
                     :title="img.name"
@@ -46,7 +47,7 @@
                         @mouseenter="onHover($event, true)"
                         @mouseleave="onHover($event, false)"
                     />
-                    <img v-else-if="img.display" :src="img.display" :alt="img.name" loading="lazy" />
+                    <img v-else-if="thumbUrl(img)" :src="thumbUrl(img)" :alt="img.name" decoding="async" />
                     <div v-else class="thumb-fallback">
                         <el-icon><Picture /></el-icon>
                     </div>
@@ -86,6 +87,7 @@
                     <div
                         v-for="img in pagedFolderImages"
                         :key="img.path"
+                        v-thumb="img"
                         class="thumb"
                         :class="{ 'is-active': img.path === config.imagePath }"
                         :title="img.name"
@@ -101,7 +103,7 @@
                             @mouseenter="onHover($event, true)"
                             @mouseleave="onHover($event, false)"
                         />
-                        <img v-else-if="img.display" :src="img.display" :alt="img.name" loading="lazy" />
+                        <img v-else-if="thumbUrl(img)" :src="thumbUrl(img)" :alt="img.name" decoding="async" />
                         <div v-else class="thumb-fallback">
                             <el-icon><Picture /></el-icon>
                         </div>
@@ -144,6 +146,7 @@ import { Plus, FolderAdd, FolderOpened, PictureFilled, Picture, Check, VideoCame
 import { useI18n } from '../composables/useI18n';
 import { useBridge } from '../composables/useBridge';
 import { config, state } from '../composables/useStore';
+import { thumbUrl, vThumb } from '../composables/useThumbnails';
 import { ActionType } from '../constants';
 import { isVideoPath } from '../utils/media';
 

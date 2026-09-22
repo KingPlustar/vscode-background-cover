@@ -1,6 +1,13 @@
 import { reactive } from 'vue';
 import { DEFAULT_CACHE_LIMIT, DEFAULT_PARTICLE_FPS } from '../constants';
 
+/** Optional thumbnail info attached to any local preview payload. */
+export interface ThumbFields {
+    /** Present when the host has no cached thumbnail yet; the webview generates it. */
+    thumbKey?: string;
+    thumbKind?: 'grid' | 'large';
+}
+
 /**
  * Reactive snapshot of extension-side configuration mirrored into the webview.
  * The extension pushes a 'state' message; the bridge listener writes here.
@@ -10,6 +17,8 @@ export interface StudioConfig {
     blur: number;
     imagePath: string;
     imagePathDisplay: string;     // webview URI for <img src>
+    imagePathThumbKey?: string;
+    imagePathThumbKind?: 'grid' | 'large';
     autoStatus: boolean;
     autoInterval: number;
     autoIntervalUnit: string;
@@ -38,12 +47,12 @@ export interface StudioState {
     particleOpacity: number;
     /** 粒子特效帧率上限（#230）：高刷屏下限制重绘次数，降低 GPU 占用 */
     particleFps: number;
-    recentImages: Array<{ path: string; display: string; name: string }>;
-    folderImages: Array<{ path: string; display: string; name: string }>;
+    recentImages: Array<{ path: string; display: string; name: string } & ThumbFields>;
+    folderImages: Array<{ path: string; display: string; name: string } & ThumbFields>;
     folderImagesTotal: number;
     pets: Array<{ value: string; label: string; desc: string; thumb: string }>;
     colorPalette: Array<{ name: string; rgb: string; hex: string }>;
-    imageConfigs: Array<{ name: string; display: string; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; opacity: number | undefined }>;
+    imageConfigs: Array<{ name: string; display: string; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; opacity: number | undefined } & ThumbFields>;
     patterns: Array<{ pattern: string; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; matchCount: number; opacity: number | undefined }>;
 }
 

@@ -2,7 +2,7 @@
     <div class="home-tab">
         <!-- Preview card -->
         <el-card class="preview-card" shadow="never">
-            <div class="preview-frame" :class="{ 'is-empty': !displayUrl }">
+            <div class="preview-frame" :class="{ 'is-empty': !displayUrl }" v-thumb="previewRef">
                 <video
                     v-if="displayUrl && isVideo"
                     :src="displayUrl"
@@ -12,10 +12,14 @@
                     playsinline
                 />
                 <img
-                    v-else-if="displayUrl"
-                    :src="displayUrl"
+                    v-else-if="imageUrl"
+                    :src="imageUrl"
                     alt="background preview"
+                    decoding="async"
                 />
+                <div v-else-if="displayUrl" class="preview-loading">
+                    <el-icon :size="26"><Picture /></el-icon>
+                </div>
                 <div v-else class="preview-empty">
                     <el-icon :size="32"><Picture /></el-icon>
                     <span>{{ t('none') }}</span>
@@ -127,6 +131,7 @@ import { Picture, Upload, Operation, RefreshRight, Delete, Grid, FolderOpened, S
 import { useI18n } from '../composables/useI18n';
 import { useBridge } from '../composables/useBridge';
 import { config } from '../composables/useStore';
+import { thumbUrl, vThumb } from '../composables/useThumbnails';
 import { ActionType, GITHUB_REPO_URL, GITHUB_ISSUES_URL } from '../constants';
 import { isVideoPath } from '../utils/media';
 
@@ -135,6 +140,15 @@ const bridge = useBridge();
 
 // 只用扩展侧给出的本地路径。在线地址一律不直连，避免每次刷新都回源云存储。
 const displayUrl = computed(() => config.imagePathDisplay || '');
+
+// 大预览同样走缩略图缓存：未生成时显示占位图（绝不直接解码原图），生成后立即替换。
+const previewRef = computed(() => ({
+    display: displayUrl.value,
+    thumbKey: config.imagePathThumbKey,
+    thumbKind: config.imagePathThumbKind || ('large' as const)
+}));
+
+const imageUrl = computed(() => thumbUrl(previewRef.value));
 
 const isVideo = computed(() => isVideoPath(config.imagePath));
 
@@ -214,6 +228,17 @@ function onStar()   { bridge.post({ type: 'openExternal', url: GITHUB_REPO_URL }
     gap: 6px;
     color: var(--vscode-descriptionForeground);
     font-size: 12px;
+}
+
+/* 缩略图生成中：占位而非解码原图，避免大图卡死面板。 */
+.preview-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: var(--vscode-descriptionForeground);
+    opacity: 0.6;
 }
 
 .preview-overlay {

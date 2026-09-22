@@ -146,9 +146,12 @@
                     <div class="image-config-info">
                         <el-tooltip :disabled="!item.display" placement="right" :show-after="150" :show-arrow="false" popper-class="image-config-tooltip">
                             <template #content>
-                                <div class="hover-preview">
+                                <div class="hover-preview" v-thumb="item">
                                     <video v-if="isVideoPath(item.name)" :src="item.display" muted loop playsinline preload="metadata" />
-                                    <img v-else :src="item.display" :alt="item.name" />
+                                    <img v-else-if="thumbUrl(item)" :src="thumbUrl(item)" :alt="item.name" decoding="async" />
+                            <div v-else class="dialog-preview-fallback">
+                                <el-icon><Picture /></el-icon>
+                            </div>
                                 </div>
                             </template>
                             <span class="image-config-name">{{ item.name }}</span>
@@ -240,9 +243,9 @@
                 </el-form-item>
                 <div v-if="patternPreviewText" class="field-hint pattern-preview-text">{{ patternPreviewText }}</div>
                 <div v-if="patternPreviewFiles.length" class="pattern-preview-list">
-                    <div v-for="file in patternPreviewFiles" :key="file.name" class="pattern-preview-item" :class="{ 'is-selected': file.name === patternPreviewTarget }" :title="file.name" @click="patternPreviewTarget = file.name">
+                    <div v-for="file in patternPreviewFiles" :key="file.name" v-thumb="file" class="pattern-preview-item" :class="{ 'is-selected': file.name === patternPreviewTarget }" :title="file.name" @click="patternPreviewTarget = file.name">
                         <video v-if="isVideoPath(file.name)" :src="file.display" muted loop playsinline preload="metadata" />
-                        <img v-else-if="file.display" :src="file.display" :alt="file.name" />
+                        <img v-else-if="thumbUrl(file)" :src="thumbUrl(file)" :alt="file.name" decoding="async" />
                         <div v-else class="dialog-preview-fallback">
                             <el-icon><Picture /></el-icon>
                         </div>
@@ -332,9 +335,9 @@
             append-to-body
         >
             <el-form label-position="top" size="small">
-                <div class="dialog-preview">
+                <div class="dialog-preview" v-thumb="editingPreview">
                     <video v-if="editingDisplay && isVideoPath(editingName)" :src="editingDisplay" muted loop playsinline preload="metadata" />
-                    <img v-else-if="editingDisplay" :src="editingDisplay" :alt="editingName" />
+                    <img v-else-if="thumbUrl(editingPreview)" :src="thumbUrl(editingPreview)" :alt="editingName" decoding="async" />
                     <div v-else class="dialog-preview-fallback">
                         <el-icon><Picture /></el-icon>
                     </div>
@@ -477,6 +480,7 @@ import { ElMessageBox } from 'element-plus';
 import { useI18n } from '../composables/useI18n';
 import { useBridge } from '../composables/useBridge';
 import { config, state } from '../composables/useStore';
+import { thumbUrl, vThumb } from '../composables/useThumbnails';
 import { ActionType, SIZE_MODES, BLEND_MODES, DEFAULT_CACHE_LIMIT } from '../constants';
 import { isVideoPath } from '../utils/media';
 
@@ -524,6 +528,14 @@ function onLevelChange(v: number | undefined) {
 const dialogVisible = ref(false);
 const editingName = ref('');
 const editingDisplay = ref('');
+const editingThumbKey = ref<string | undefined>(undefined);
+const editingThumbKind = ref<'grid' | 'large'>('large');
+/** Dialog preview payload (大预览走 960px 缩略图缓存）。 */
+const editingPreview = computed(() => ({
+    display: editingDisplay.value,
+    thumbKey: editingThumbKey.value,
+    thumbKind: editingThumbKind.value
+}));
 const form = reactive({
     weight: undefined as number | undefined,
     dwellBonusSeconds: undefined as number | undefined,
@@ -566,6 +578,8 @@ bridge.on('imageConfigPick', (data: any) => {
     const existing = state.imageConfigs.find(i => i.name === name);
     editingName.value = name;
     editingDisplay.value = data?.display ?? existing?.display ?? '';
+    editingThumbKey.value = data?.thumbKey ?? existing?.thumbKey;
+    editingThumbKind.value = (data?.thumbKind ?? existing?.thumbKind) || 'large';
     form.weight = existing?.weight;
     form.dwellBonusSeconds = existing?.dwellBonusSeconds;
     form.minDisplaySeconds = existing?.minDisplaySeconds;
@@ -574,9 +588,11 @@ bridge.on('imageConfigPick', (data: any) => {
     dialogVisible.value = true;
 });
 
-function openEdit(item: { name: string; display: string; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; opacity: number | undefined }) {
+function openEdit(item: { name: string; display: string; thumbKey?: string; thumbKind?: 'grid' | 'large'; weight: number | undefined; dwellBonusSeconds: number | undefined; minDisplaySeconds: number | undefined; opacity: number | undefined }) {
     editingName.value = item.name;
     editingDisplay.value = item.display ?? '';
+    editingThumbKey.value = item.thumbKey;
+    editingThumbKind.value = item.thumbKind || 'large';
     form.weight = item.weight;
     form.dwellBonusSeconds = item.dwellBonusSeconds;
     form.minDisplaySeconds = item.minDisplaySeconds;
@@ -673,7 +689,7 @@ function resetPatternField(key: 'weight' | 'dwell' | 'minDisplay') {
 }
 const patternPreviewText = ref('');
 const patternPreviewCount = ref(0);
-const patternPreviewFiles = ref<{ name: string; display: string }[]>([]);
+const patternPreviewFiles = ref<{ name: string; display: string; thumbKey?: string; thumbKind?: 'grid' | 'large' }[]>([]);
 let patternPreviewTimer: number | undefined;
 
 function openPatternAdd() {

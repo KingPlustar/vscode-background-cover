@@ -22,6 +22,7 @@ import { DEFAULT_ONLINE_CACHE_LIMIT, findCachedOnlineImage, isOnlineUrl, readOnl
 import { DEFAULT_PARTICLE_FPS } from './ParticleEffect';
 import { ImageOverridesStore } from './imageOverrides';
 import { isPathInside } from './rotation';
+import { ThumbnailStore, ThumbKind } from './thumbnails';
 
 /**
  * Vue-powered single-pane configuration webview.
@@ -51,6 +52,8 @@ export class StudioViewProvider implements WebviewViewProvider {
     private galleryBusy = false;
     /** Set of allowed local-resource root directories (fs paths). */
     private allowedRoots = new Set<string>();
+    /** Lazily created disk cache for downscaled local previews. */
+    private thumbnailStore?: ThumbnailStore;
 
     constructor(private readonly ctx: ExtensionContext) {}
 
@@ -98,13 +101,13 @@ export class StudioViewProvider implements WebviewViewProvider {
         const cacheEntries = readOnlineCacheEntries();
 
         const imagePath = resolveCurrentImagePath(cfg.get<string>('imagePath') || '');
-        const imagePathDisplay = this.toWebviewUri(imagePath, cacheEntries);
+        const imagePreview = this.previewFor(imagePath, 'large', cacheEntries);
 
         const recentRaw = gs.get<string[]>('backgroundCoverRecentImages', []) || [];
         const recentImages = recentRaw.map(p => ({
             path: p,
-            display: this.toWebviewUri(p, cacheEntries),
-            name: this.basename(p)
+            name: this.basename(p),
+            ...this.previewFor(p, 'grid', cacheEntries)
         }));
 
         const folder = cfg.get<string>('randomImageFolder') || '';
@@ -116,7 +119,7 @@ export class StudioViewProvider implements WebviewViewProvider {
                 folderImagesTotal = names.length;
                 folderImages = names.slice(0, 2000).map(name => {
                     const full = path.join(folder, name);
-                    return { path: full, display: this.toWebviewUri(full), name };
+                    return { path: full, name, ...this.previewFor(full, 'grid') };
                 });
             }
         } catch {
@@ -151,11 +154,11 @@ export class StudioViewProvider implements WebviewViewProvider {
                 const data = await new ImageOverridesStore(folder).load();
                 imageConfigs = data.images.map(o => ({
                     name: o.file,
-                    display: this.toWebviewUri(path.join(folder, o.file)),
                     weight: o.weight,
                     dwellBonusSeconds: o.dwellBonusSeconds,
                     minDisplaySeconds: o.minDisplaySeconds,
-                    opacity: o.opacity
+                    opacity: o.opacity,
+                    ...this.previewFor(path.join(folder, o.file), 'grid')
                 }));
                 const names = PickList.listFolderImages(folder);
                 patterns = data.patterns.map(p => ({
@@ -185,7 +188,9 @@ export class StudioViewProvider implements WebviewViewProvider {
                     opacity: resolveCurrentOpacity(cfg.get('opacity') ?? 0.2),
                     blur: resolveCurrentBlur(cfg.get('blur') ?? 0),
                     imagePath,
-                    imagePathDisplay,
+                    imagePathDisplay: imagePreview.display,
+                    imagePathThumbKey: imagePreview.thumbKey,
+                    imagePathThumbKind: imagePreview.thumbKind,
                     autoStatus: cfg.get('autoStatus') ?? false,
                     autoInterval: cfg.get('autoInterval') ?? 10,
                     autoIntervalUnit: cfg.get('autoIntervalUnit') ?? 'seconds',
@@ -258,6 +263,12 @@ export class StudioViewProvider implements WebviewViewProvider {
                     await this.ctx.globalState.update(msg.key, msg.value);
                     onDidChangeGlobalState.fire();
                 }
+                return;
+
+            case 'saveThumbnail':
+                // Cached locally; the webview already shows its in-memory object URL,
+                // so no state push is needed here.
+                await this.saveThumbnail(msg.key, msg.data);
                 return;
 
             case 'pickImageForConfig':
@@ -347,7 +358,14 @@ export class StudioViewProvider implements WebviewViewProvider {
             window.showWarningMessage('The selected file must be inside the source folder / 所选文件必须在来源目录内');
             return;
         }
-        this.view?.webview.postMessage({ type: 'imageConfigPick', name: path.basename(selected), display: this.toWebviewUri(selected) });
+        const preview = this.previewFor(selected, 'large');
+        this.view?.webview.postMessage({
+            type: 'imageConfigPick',
+            name: path.basename(selected),
+            display: preview.display,
+            thumbKey: preview.thumbKey,
+            thumbKind: preview.thumbKind
+        });
     }
 
     /** Persist one image's weight / dwell bonus / min display time. */
@@ -394,7 +412,7 @@ export class StudioViewProvider implements WebviewViewProvider {
         const folder = cfg.get<string>('randomImageFolder') || '';
         const pattern = typeof msg.pattern === 'string' ? msg.pattern : '';
         let count = 0;
-        let files: { name: string; display: string }[] = [];
+        let files: { name: string; display: string; thumbKey?: string; thumbKind?: ThumbKind }[] = [];
         if (folder) {
             try {
                 const re = new RegExp(pattern);
@@ -402,7 +420,7 @@ export class StudioViewProvider implements WebviewViewProvider {
                 count = names.length;
                 files = names.slice(0, 20).map(name => ({
                     name,
-                    display: this.toWebviewUri(path.join(folder, name))
+                    ...this.previewFor(path.join(folder, name), 'grid')
                 }));
             } catch {
                 count = 0;
@@ -508,6 +526,50 @@ export class StudioViewProvider implements WebviewViewProvider {
         return path.basename(p || '');
     }
 
+    /** Disk cache holding downscaled local previews (webp). */
+    private thumbnails(): ThumbnailStore {
+        if (!this.thumbnailStore) {
+            this.thumbnailStore = new ThumbnailStore(path.join(this.ctx.globalStorageUri.fsPath, 'thumbnails'));
+        }
+        return this.thumbnailStore;
+    }
+
+    /**
+     * Preview payload for one local image.
+     *
+     * 命中小图缓存时直接指向缩略图（几十 KB，不再读取原图）；否则先给原图 URI，
+     * 并把 thumbKey/thumbKind 一起下发，webview 解码出小图后会回传落盘，之后便走缓存。
+     * 在线地址仍沿用在线的本地缓存副本逻辑。
+     */
+    private previewFor(
+        fullPath: string,
+        kind: ThumbKind,
+        cacheEntries?: string[]
+    ): { display: string; thumbKey?: string; thumbKind?: ThumbKind } {
+        if (!fullPath) { return { display: '' }; }
+        if (isOnlineUrl(fullPath)) {
+            return { display: this.toWebviewUri(fullPath, cacheEntries) };
+        }
+        const store = this.thumbnails();
+        const info = store.describe(fullPath, kind);
+        if (info.key && info.ready) {
+            const display = this.toWebviewUri(store.pathFor(info.key), cacheEntries);
+            if (display) { return { display }; }
+        }
+        const display = this.toWebviewUri(fullPath, cacheEntries);
+        return info.key ? { display, thumbKey: info.key, thumbKind: kind } : { display };
+    }
+
+    /** Persist a thumbnail generated by the webview (base64 webp). */
+    private async saveThumbnail(key: unknown, data: unknown): Promise<void> {
+        if (typeof key !== 'string' || typeof data !== 'string') { return; }
+        try {
+            await this.thumbnails().save(key, data);
+        } catch (e) {
+            console.warn('[Studio] Failed to cache thumbnail:', e);
+        }
+    }
+
     /** Seed initial allowed roots: extension dist, workspace folders, global/extension storage. */
     private seedAllowedRoots(): void {
         const add = (p: string | undefined) => {
@@ -560,10 +622,13 @@ export class StudioViewProvider implements WebviewViewProvider {
         const nonce = randomNonce();
         // img-src/media-src 不放开 https:：所有预览都必须引用下载到本地的缓存副本，
         // 否则面板每次刷新都会回源云存储。frame-src 仍需 https 供在线图库 iframe 使用。
+        // connect-src 只放开本面板自己的资源域：缩略图生成需要 fetch 原图字节后按目标
+        // 尺寸解码（Chromium 可据此走缩放解码），不允许连外网。
         const csp = [
             `default-src 'none'`,
             `img-src ${webview.cspSource} data: blob:`,
             `media-src ${webview.cspSource} data: blob:`,
+            `connect-src ${webview.cspSource}`,
             `style-src ${webview.cspSource} 'unsafe-inline'`,
             `font-src ${webview.cspSource} data:`,
             `script-src 'nonce-${nonce}'`,
