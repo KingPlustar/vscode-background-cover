@@ -1166,7 +1166,10 @@ export class PickList {
             return s.endsWith('.png') || s.endsWith('.PNG') || s.endsWith('.jpg') || s.endsWith('.JPG')
                 || s.endsWith('.jpeg') || s.endsWith('.gif') || s.endsWith('.webp') || s.endsWith('.bmp')
                 || s.endsWith('.jfif') || s.endsWith('.mp4') || s.endsWith('.webm') || s.endsWith('.ogg') || s.endsWith('.mov');
-        });
+        })
+        // 自然排序：1、2、…、10、11，而不是 readdir 的字典序 1、10、11、2。
+        // 本地页画廊、正则预览都直接消费这个顺序；顺序轮换内部同样按此排序。
+        .sort(naturalCompare);
     }
 
     private getFolderImgList(pathUrl: string): string[] {
